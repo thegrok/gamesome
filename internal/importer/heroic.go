@@ -18,9 +18,9 @@ var heroicLibraryPath = filepath.Join(
 	".var/app/com.heroicgameslauncher.hgl/config/heroic/store_cache/legendary_library.json",
 )
 
-var heroicInstallInfoPath = filepath.Join(
+var heroicInstalledPath = filepath.Join(
 	os.Getenv("HOME"),
-	".var/app/com.heroicgameslauncher.hgl/config/heroic/store_cache/legendary_install_info.json",
+	".var/app/com.heroicgameslauncher.hgl/config/heroic/legendaryConfig/legendary/installed.json",
 )
 
 type heroicLibraryFile struct {
@@ -36,14 +36,11 @@ type heroicLibraryEntry struct {
 	} `json:"install"`
 }
 
-// heroicInstallInfo is keyed by app_name.
-type heroicInstallEntry struct {
-	Game struct {
-		IsDLC bool `json:"is_dlc"`
-	} `json:"game"`
-	Install *struct {
-		InstallPath string `json:"install_path"`
-	} `json:"install"`
+// heroicInstalledEntry is one entry from legendary's installed.json, keyed by app_name.
+type heroicInstalledEntry struct {
+	AppName     string `json:"app_name"`
+	InstallPath string `json:"install_path"`
+	IsDLC       bool   `json:"is_dlc"`
 }
 
 // Heroic imports games from Heroic Launcher's Epic library cache.
@@ -53,11 +50,11 @@ func Heroic(database *sql.DB) error {
 		return fmt.Errorf("read heroic library: %w", err)
 	}
 
-	installInfo, err := readHeroicInstallInfo()
+	installInfo, err := readHeroicInstalled()
 	if err != nil {
 		// Non-fatal: install paths just won't be populated
-		log.Printf("warning: could not read install info: %v", err)
-		installInfo = map[string]heroicInstallEntry{}
+		log.Printf("warning: could not read installed.json: %v", err)
+		installInfo = map[string]heroicInstalledEntry{}
 	}
 
 	imported := 0
@@ -85,10 +82,10 @@ func Heroic(database *sql.DB) error {
 
 		installPath := ""
 		installedFlag := 0
-		if info, ok := installInfo[g.AppName]; ok && info.Install != nil {
+		if info, ok := installInfo[g.AppName]; ok {
 			installedFlag = 1
 			installedCount++
-			installPath = info.Install.InstallPath
+			installPath = info.InstallPath
 		}
 
 		entry := db.LibraryEntry{
@@ -124,14 +121,14 @@ func readHeroicLibrary() ([]heroicLibraryEntry, error) {
 	return f.Library, nil
 }
 
-func readHeroicInstallInfo() (map[string]heroicInstallEntry, error) {
-	data, err := os.ReadFile(heroicInstallInfoPath)
+func readHeroicInstalled() (map[string]heroicInstalledEntry, error) {
+	data, err := os.ReadFile(heroicInstalledPath)
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", heroicInstallInfoPath, err)
+		return nil, fmt.Errorf("open %s: %w", heroicInstalledPath, err)
 	}
-	var info map[string]heroicInstallEntry
+	var info map[string]heroicInstalledEntry
 	if err := json.Unmarshal(data, &info); err != nil {
-		return nil, fmt.Errorf("parse legendary_install_info.json: %w", err)
+		return nil, fmt.Errorf("parse installed.json: %w", err)
 	}
 	return info, nil
 }
