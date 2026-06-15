@@ -85,12 +85,10 @@ func Heroic(database *sql.DB) error {
 
 		installPath := ""
 		installedFlag := 0
-		if g.IsInstalled {
+		if info, ok := installInfo[g.AppName]; ok && info.Install != nil {
 			installedFlag = 1
 			installedCount++
-			if info, ok := installInfo[g.AppName]; ok && info.Install != nil {
-				installPath = info.Install.InstallPath
-			}
+			installPath = info.Install.InstallPath
 		}
 
 		entry := db.LibraryEntry{
