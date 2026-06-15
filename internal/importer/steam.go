@@ -45,7 +45,7 @@ func Steam(database *sql.DB) error {
 		fmt.Println("Steam API skipped (no STEAM_API_KEY/STEAM_ID)")
 	}
 
-	manifestImported, manifestInstalled := steamManifestScan(database, apiImported > 0)
+	manifestImported, manifestInstalled := steamManifestScan(database)
 
 	if apiKey != "" && steamID != "" && apiErr == nil {
 		fmt.Printf("Imported %d games from Steam (%d from API, %d installed from local manifests)\n",
@@ -146,7 +146,7 @@ func isSteamTool(name string) bool {
 // apiRan=true → just update installed state for existing entries.
 // apiRan=false → insert as owned+installed.
 // Returns (newInserts, installedCount).
-func steamManifestScan(database *sql.DB, apiRan bool) (int, int) {
+func steamManifestScan(database *sql.DB) (int, int) {
 	candidates := []string{
 		filepath.Join(os.Getenv("HOME"), ".steam", "steam", "steamapps"),
 		filepath.Join(os.Getenv("HOME"), ".local", "share", "Steam", "steamapps"),
@@ -184,14 +184,6 @@ func steamManifestScan(database *sql.DB, apiRan bool) (int, int) {
 			installPath := filepath.Join(dir, "common", installDir)
 			installedCount++
 
-			if apiRan {
-				if err := db.UpdateInstalledBySteamAppID(database, appID, installPath); err != nil {
-					log.Printf("warning: update installed for appid %d: %v", appID, err)
-				}
-				continue
-			}
-
-			// No API run — insert as owned+installed.
 			norm := normalize.Title(name)
 			if norm == "" {
 				continue
