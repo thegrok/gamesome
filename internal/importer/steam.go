@@ -77,7 +77,7 @@ func steamAPIImport(database *sql.DB, apiKey, steamID string) (int, error) {
 
 	imported := 0
 	for _, g := range result.Response.Games {
-		if g.Name == "" {
+		if g.Name == "" || isSteamTool(g.Name) {
 			continue
 		}
 
@@ -123,6 +123,25 @@ func steamAPIImport(database *sql.DB, apiKey, steamID string) (int, error) {
 	return imported, nil
 }
 
+// steamToolPrefixes are names that indicate a Steam tool, runtime, or redistributable
+// rather than a game. Matched as a prefix (case-insensitive) against the entry title.
+var steamToolPrefixes = []string{
+	"proton",
+	"steam linux runtime",
+	"steamworks common",
+	"steam play",
+}
+
+func isSteamTool(name string) bool {
+	lower := strings.ToLower(name)
+	for _, prefix := range steamToolPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // steamManifestScan reads local ACF manifests to detect installed games.
 // apiRan=true → just update installed state for existing entries.
 // apiRan=false → insert as owned+installed.
@@ -153,7 +172,7 @@ func steamManifestScan(database *sql.DB, apiRan bool) (int, int) {
 			name := fields["name"]
 			installDir := fields["installdir"]
 
-			if appIDStr == "" || name == "" {
+			if appIDStr == "" || name == "" || isSteamTool(name) {
 				continue
 			}
 
