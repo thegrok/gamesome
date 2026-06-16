@@ -12,11 +12,13 @@ import (
 
 var enrichCmd = &cobra.Command{
 	Use:   "enrich",
-	Short: "Enrich game library with metadata and sommelier traits",
+	Short: "Enrich game library with metadata from Steam",
 	Long: `Runs all enrichment steps in order:
   1. steam-ids  — cross-reference Epic games to Steam app IDs
   2. metadata   — fetch genres, description, tags from Steam Store API
-  3. traits     — infer sommelier profile via LLM (requires ANTHROPIC_API_KEY)`,
+
+Sommelier profile traits are inferred lazily during Claude sommelier
+conversations and written back to the database via MCP.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		database, err := db.Open()
 		if err != nil {
@@ -24,19 +26,14 @@ var enrichCmd = &cobra.Command{
 		}
 		defer database.Close()
 
-		fmt.Println("Step 1/3: Resolving Steam IDs for unmatched games...")
+		fmt.Println("Step 1/2: Resolving Steam IDs for unmatched games...")
 		if err := importer.EnrichSteamIDs(database); err != nil {
 			fmt.Fprintf(os.Stderr, "steam-ids: %v\n", err)
 		}
 
-		fmt.Println("\nStep 2/3: Fetching Steam Store metadata...")
+		fmt.Println("\nStep 2/2: Fetching Steam Store metadata...")
 		if err := importer.EnrichMetadata(database); err != nil {
 			fmt.Fprintf(os.Stderr, "metadata: %v\n", err)
-		}
-
-		fmt.Println("\nStep 3/3: Inferring sommelier traits via LLM...")
-		if err := importer.EnrichTraits(database); err != nil {
-			fmt.Fprintf(os.Stderr, "traits: %v\n", err)
 		}
 
 		return nil
@@ -69,25 +66,8 @@ var enrichMetadataCmd = &cobra.Command{
 	},
 }
 
-var enrichTraitsCmd = &cobra.Command{
-	Use:   "traits",
-	Short: "Infer sommelier profile traits via LLM (requires ANTHROPIC_API_KEY)",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if os.Getenv("ANTHROPIC_API_KEY") == "" {
-			return fmt.Errorf("ANTHROPIC_API_KEY not set")
-		}
-		database, err := db.Open()
-		if err != nil {
-			return fmt.Errorf("open database: %w", err)
-		}
-		defer database.Close()
-		return importer.EnrichTraits(database)
-	},
-}
-
 func init() {
 	enrichCmd.AddCommand(enrichSteamIDsCmd)
 	enrichCmd.AddCommand(enrichMetadataCmd)
-	enrichCmd.AddCommand(enrichTraitsCmd)
 	rootCmd.AddCommand(enrichCmd)
 }
