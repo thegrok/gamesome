@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gamesom": {
+      "command": "uv",
+      "args": ["run", "--directory", "mcp", "gamesom-mcp"]
+    }
+  }
+}
