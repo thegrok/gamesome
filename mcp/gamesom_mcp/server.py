@@ -62,7 +62,7 @@ def list_games(
     query = f"""
         SELECT
             g.id, g.canonical_title, g.genres, g.themes, g.summary,
-            g.first_release_date,
+            g.first_release_date, g.completed_at,
             MAX(le.installed) AS installed,
             SUM(le.playtime_minutes) AS playtime_minutes,
             MAX(le.last_played_at) AS last_played_at,
@@ -94,7 +94,7 @@ def search_games(query: str, limit: int = 20) -> list[dict[str, Any]]:
     """
     sql = """
         SELECT
-            g.id, g.canonical_title, g.genres, g.summary,
+            g.id, g.canonical_title, g.genres, g.summary, g.completed_at,
             MAX(le.installed) AS installed,
             SUM(le.playtime_minutes) AS playtime_minutes,
             GROUP_CONCAT(DISTINCT le.source) AS sources,
@@ -194,6 +194,29 @@ def upsert_profile(
             ],
         )
     return f"Profile saved for game_id={game_id}"
+
+
+@mcp.tool()
+def mark_completed(game_id: int, completed: bool = True) -> str:
+    """Mark a game as completed, or clear the mark.
+
+    Use this when the user says they've finished a game, so it's recorded and
+    can be excluded from future "what should I play" recommendations. Completion
+    is a per-game timestamp (NULL = not completed).
+
+    Args:
+        game_id: The game's database ID.
+        completed: True stamps completion with the current time; False clears it.
+    """
+    with get_conn() as conn:
+        if completed:
+            conn.execute(
+                "UPDATE games SET completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+                [game_id],
+            )
+            return f"Marked game_id={game_id} completed"
+        conn.execute("UPDATE games SET completed_at = NULL WHERE id = ?", [game_id])
+        return f"Cleared completion for game_id={game_id}"
 
 
 @mcp.resource("gamesom://library/summary")

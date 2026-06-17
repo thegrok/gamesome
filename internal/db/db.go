@@ -91,6 +91,7 @@ func migrateEnrichColumns(db *sql.DB) {
 		"ALTER TABLE games ADD COLUMN metacritic_score INTEGER",
 		"ALTER TABLE games ADD COLUMN linux_native INTEGER",
 		"ALTER TABLE games ADD COLUMN enriched_at DATETIME",
+		"ALTER TABLE games ADD COLUMN completed_at DATETIME",
 	} {
 		db.Exec(stmt) // ignore error — "duplicate column" is expected on subsequent runs
 	}
