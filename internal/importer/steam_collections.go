@@ -132,6 +132,8 @@ func SteamCollectionsImport(database *sql.DB, collectionName string, dryRun bool
 }
 
 // findSteamCollection searches for a Steam collection in the cloud storage JSON file.
+// The collection data is stored in Steam's cloud storage metadata, not in the LevelDB
+// Local Storage cache, so it's always accessible regardless of Steam process state.
 // Returns the collection data, the user ID, or an error if not found.
 func findSteamCollection(collectionName string) (*SteamCollection, string, error) {
 	// Try both standard locations
