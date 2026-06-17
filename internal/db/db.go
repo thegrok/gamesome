@@ -81,7 +81,175 @@ func Open() (*sql.DB, error) {
 		return nil, fmt.Errorf("migrate schema: %w", err)
 	}
 
+	migrateEnrichColumns(db)
 	return db, nil
+}
+
+// migrateEnrichColumns adds enrichment columns idempotently.
+func migrateEnrichColumns(db *sql.DB) {
+	for _, stmt := range []string{
+		"ALTER TABLE games ADD COLUMN metacritic_score INTEGER",
+		"ALTER TABLE games ADD COLUMN linux_native INTEGER",
+		"ALTER TABLE games ADD COLUMN enriched_at DATETIME",
+	} {
+		db.Exec(stmt) // ignore error — "duplicate column" is expected on subsequent runs
+	}
+}
+
+// SetSteamAppID sets the steam_appid for a game row.
+func SetSteamAppID(db *sql.DB, gameID, appID int64) error {
+	_, err := db.Exec(`UPDATE games SET steam_appid = ? WHERE id = ?`, appID, gameID)
+	return err
+}
+
+// GameStub is a minimal game row used for enrichment queries.
+type GameStub struct {
+	ID              int64
+	NormalizedTitle string
+}
+
+// GamesWithoutSteamAppID returns all games that have no steam_appid set.
+func GamesWithoutSteamAppID(db *sql.DB) ([]GameStub, error) {
+	rows, err := db.Query(`SELECT id, normalized_title FROM games WHERE steam_appid IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []GameStub
+	for rows.Next() {
+		var g GameStub
+		if err := rows.Scan(&g.ID, &g.NormalizedTitle); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// GameWithAppID is a game row that has a steam_appid.
+type GameWithAppID struct {
+	ID         int64
+	SteamAppID int64
+	Title      string
+}
+
+// GamesWithSteamAppID returns all games that have a steam_appid and haven't been enriched yet.
+func GamesWithSteamAppID(db *sql.DB) ([]GameWithAppID, error) {
+	rows, err := db.Query(
+		`SELECT id, steam_appid, canonical_title FROM games WHERE steam_appid IS NOT NULL AND enriched_at IS NULL`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []GameWithAppID
+	for rows.Next() {
+		var g GameWithAppID
+		if err := rows.Scan(&g.ID, &g.SteamAppID, &g.Title); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// GameForTraits is a game row with metadata needed for LLM trait inference.
+type GameForTraits struct {
+	ID     int64
+	Title  string
+	Genres string
+	Themes string
+	Summary string
+}
+
+// GamesNeedingTraits returns games that have no sommelier_profile row yet.
+func GamesNeedingTraits(db *sql.DB) ([]GameForTraits, error) {
+	rows, err := db.Query(`
+		SELECT g.id, g.canonical_title,
+		       COALESCE(g.genres, ''), COALESCE(g.themes, ''), COALESCE(g.summary, '')
+		FROM games g
+		WHERE NOT EXISTS (SELECT 1 FROM sommelier_profile sp WHERE sp.game_id = g.id)
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []GameForTraits
+	for rows.Next() {
+		var g GameForTraits
+		if err := rows.Scan(&g.ID, &g.Title, &g.Genres, &g.Themes, &g.Summary); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// UpdateGameMetadata stores Steam Store enrichment results on a game row.
+func UpdateGameMetadata(db *sql.DB, gameID int64, genres, themes, summary string, metacritic *int, releaseDate *int64, linuxNative *bool) error {
+	_, err := db.Exec(`
+		UPDATE games SET
+			genres = CASE WHEN ? != '' THEN ? ELSE genres END,
+			themes = CASE WHEN ? != '' THEN ? ELSE themes END,
+			summary = CASE WHEN ? != '' THEN ? ELSE summary END,
+			metacritic_score = COALESCE(?, metacritic_score),
+			first_release_date = COALESCE(?, first_release_date),
+			linux_native = COALESCE(?, linux_native),
+			enriched_at = CURRENT_TIMESTAMP,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, genres, genres, themes, themes, summary, summary, metacritic, releaseDate, linuxNativeInt(linuxNative), gameID)
+	return err
+}
+
+// MarkEnrichedAt sets enriched_at without updating any metadata (for failed/delisted games).
+func MarkEnrichedAt(db *sql.DB, gameID int64) error {
+	_, err := db.Exec(`UPDATE games SET enriched_at = CURRENT_TIMESTAMP WHERE id = ?`, gameID)
+	return err
+}
+
+// UpsertSommelierProfile inserts or replaces the sommelier_profile for a game.
+func UpsertSommelierProfile(db *sql.DB, gameID int64, p SommelierProfile) error {
+	_, err := db.Exec(`
+		INSERT INTO sommelier_profile
+			(game_id, energy_required, friction_level, session_length_fit,
+			 narrative_memory_load, complexity_level, mood_tags, avoid_when, best_when)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(game_id) DO UPDATE SET
+			energy_required      = excluded.energy_required,
+			friction_level       = excluded.friction_level,
+			session_length_fit   = excluded.session_length_fit,
+			narrative_memory_load= excluded.narrative_memory_load,
+			complexity_level     = excluded.complexity_level,
+			mood_tags            = excluded.mood_tags,
+			avoid_when           = excluded.avoid_when,
+			best_when            = excluded.best_when
+	`, gameID, p.EnergyRequired, p.FrictionLevel, p.SessionLengthFit,
+		p.NarrativeMemoryLoad, p.ComplexityLevel, p.MoodTags, p.AvoidWhen, p.BestWhen)
+	return err
+}
+
+// SommelierProfile holds inferred trait data for a game.
+type SommelierProfile struct {
+	EnergyRequired      string `json:"energy_required"`
+	FrictionLevel       string `json:"friction_level"`
+	SessionLengthFit    string `json:"session_length_fit"`
+	NarrativeMemoryLoad string `json:"narrative_memory_load"`
+	ComplexityLevel     string `json:"complexity_level"`
+	MoodTags            string `json:"mood_tags"`
+	AvoidWhen           string `json:"avoid_when"`
+	BestWhen            string `json:"best_when"`
+}
+
+func linuxNativeInt(b *bool) *int {
+	if b == nil {
+		return nil
+	}
+	v := 0
+	if *b {
+		v = 1
+	}
+	return &v
 }
 
 // UpsertGame inserts a game by normalized title or returns the existing id.
