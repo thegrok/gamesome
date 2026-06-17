@@ -106,11 +106,12 @@ func SetSteamAppID(db *sql.DB, gameID, appID int64) error {
 type GameStub struct {
 	ID              int64
 	NormalizedTitle string
+	CanonicalTitle  string
 }
 
 // GamesWithoutSteamAppID returns all games that have no steam_appid set.
 func GamesWithoutSteamAppID(db *sql.DB) ([]GameStub, error) {
-	rows, err := db.Query(`SELECT id, normalized_title FROM games WHERE steam_appid IS NULL`)
+	rows, err := db.Query(`SELECT id, normalized_title, canonical_title FROM games WHERE steam_appid IS NULL`)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +119,7 @@ func GamesWithoutSteamAppID(db *sql.DB) ([]GameStub, error) {
 	var out []GameStub
 	for rows.Next() {
 		var g GameStub
-		if err := rows.Scan(&g.ID, &g.NormalizedTitle); err != nil {
+		if err := rows.Scan(&g.ID, &g.NormalizedTitle, &g.CanonicalTitle); err != nil {
 			return nil, err
 		}
 		out = append(out, g)

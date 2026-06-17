@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,100 +15,85 @@ import (
 	"github.com/thegrok/gamesom/internal/normalize"
 )
 
-// steamAppListCacheKey is the meta key for the cached Steam app list JSON.
-const steamAppListCacheKey = "steam_app_list"
-const steamAppListCachedAtKey = "steam_app_list_cached_at"
-const steamAppListCacheTTL = 7 * 24 * time.Hour
-
-type steamAppList struct {
-	Applist struct {
-		Apps []struct {
-			Appid int64  `json:"appid"`
-			Name  string `json:"name"`
-		} `json:"apps"`
-	} `json:"applist"`
+type steamSearchResponse struct {
+	Items []struct {
+		Type string `json:"type"`
+		Name string `json:"name"`
+		ID   int64  `json:"id"`
+	} `json:"items"`
 }
 
-// EnrichSteamIDs downloads the Steam app list and fills in missing steam_appid values
-// by matching normalized titles.
+// EnrichSteamIDs searches the Steam store by title for each game without a steam_appid.
 func EnrichSteamIDs(database *sql.DB) error {
-	appMap, err := loadSteamAppList(database)
-	if err != nil {
-		return fmt.Errorf("load steam app list: %w", err)
-	}
-
 	games, err := db.GamesWithoutSteamAppID(database)
 	if err != nil {
 		return fmt.Errorf("query games without steam_appid: %w", err)
 	}
 
-	resolved := 0
-	for _, g := range games {
-		if appid, ok := appMap[g.NormalizedTitle]; ok {
-			if err := db.SetSteamAppID(database, g.ID, appid); err != nil {
-				log.Printf("warning: set steam_appid for game %d: %v", g.ID, err)
-				continue
-			}
-			resolved++
-		}
+	if len(games) == 0 {
+		fmt.Println("All games already have Steam IDs resolved.")
+		return nil
 	}
 
-	unresolved := len(games) - resolved
-	fmt.Printf("Resolved %d new Steam IDs (%d games remain unresolved)\n", resolved, unresolved)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resolved, skipped := 0, 0
+
+	for i, g := range games {
+		if i > 0 && i%50 == 0 {
+			fmt.Printf("Searched %d/%d...\n", i, len(games))
+		}
+
+		appid, err := searchSteamByTitle(client, g.NormalizedTitle, g.CanonicalTitle)
+		if err != nil {
+			log.Printf("warning: steam search for %q: %v", g.CanonicalTitle, err)
+			skipped++
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		if appid == 0 {
+			skipped++
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+
+		if err := db.SetSteamAppID(database, g.ID, appid); err != nil {
+			log.Printf("warning: set steam_appid for %q: %v", g.CanonicalTitle, err)
+		} else {
+			resolved++
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	fmt.Printf("Resolved %d new Steam IDs (%d unmatched)\n", resolved, skipped)
 	return nil
 }
 
-func loadSteamAppList(database *sql.DB) (map[string]int64, error) {
-	cachedAt := db.GetMeta(database, steamAppListCachedAtKey)
-	if cachedAt != "" {
-		t, err := time.Parse(time.RFC3339, cachedAt)
-		if err == nil && time.Since(t) < steamAppListCacheTTL {
-			cached := db.GetMeta(database, steamAppListCacheKey)
-			if cached != "" {
-				return parseSteamAppListJSON([]byte(cached))
-			}
-		}
-	}
+// searchSteamByTitle queries the Steam store search API and returns the appid of
+// the first result whose normalized name matches the game's normalized title.
+func searchSteamByTitle(client *http.Client, normalizedTitle, canonicalTitle string) (int64, error) {
+	u := "https://store.steampowered.com/api/storesearch/?term=" +
+		url.QueryEscape(canonicalTitle) + "&l=english&cc=US"
 
-	resp, err := http.Get("https://api.steampowered.com/ISteamApps/GetAppList/v2/")
+	resp, err := client.Get(u)
 	if err != nil {
-		return nil, fmt.Errorf("fetch steam app list: %w", err)
+		return 0, err
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read steam app list: %w", err)
+	var result steamSearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, err
 	}
 
-	appMap, err := parseSteamAppListJSON(data)
-	if err != nil {
-		return nil, err
-	}
-
-	// Cache the raw JSON and timestamp.
-	_ = db.SetMeta(database, steamAppListCacheKey, string(data))
-	_ = db.SetMeta(database, steamAppListCachedAtKey, time.Now().UTC().Format(time.RFC3339))
-
-	return appMap, nil
-}
-
-func parseSteamAppListJSON(data []byte) (map[string]int64, error) {
-	var list steamAppList
-	if err := json.Unmarshal(data, &list); err != nil {
-		return nil, fmt.Errorf("parse steam app list: %w", err)
-	}
-	m := make(map[string]int64, len(list.Applist.Apps))
-	for _, app := range list.Applist.Apps {
-		if app.Name == "" {
+	for _, item := range result.Items {
+		if item.Type != "app" {
 			continue
 		}
-		norm := normalize.Title(app.Name)
-		if norm != "" {
-			m[norm] = app.Appid
+		if normalize.Title(item.Name) == normalizedTitle {
+			return item.ID, nil
 		}
 	}
-	return m, nil
+	return 0, nil
 }
 
 // steamStoreResponse is the appdetails API shape.
