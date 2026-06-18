@@ -125,7 +125,7 @@ func SteamCollectionsImport(database *sql.DB, collectionName string, dryRun bool
 			"Imported %s collection: %d matched, %d newly marked, %d unmatched",
 			collectionName, result.MatchedCount, result.NewlyMarkedCount, len(unmatched),
 		)
-		log.Printf(logImportMsg)
+		log.Print(logImportMsg)
 	}
 
 	return result, nil
