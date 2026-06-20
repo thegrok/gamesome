@@ -2,7 +2,6 @@ package importer
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -16,9 +15,9 @@ import (
 var itchButlerDBPath = filepath.Join(os.Getenv("HOME"), ".config", "itch", "db", "butler.db")
 
 type itchGame struct {
-	ID    int64  `json:"id"`
-	Title string `json:"title"`
-	URL   string `json:"url"`
+	ID    int64
+	Title string
+	URL   string
 }
 
 type itchDownloadKey struct {
@@ -39,7 +38,11 @@ func Itch(database *sql.DB) error {
 	}
 	defer butlerDB.Close()
 
-	downloadRows, err := butlerDB.Query(`SELECT game_id, game FROM download_keys`)
+	downloadRows, err := butlerDB.Query(`
+		SELECT dk.game_id, g.title, g.url
+		FROM download_keys dk
+		JOIN games g ON g.id = dk.game_id
+		WHERE g.classification = 'game'`)
 	if err != nil {
 		return fmt.Errorf("query itch download keys: %w", err)
 	}
@@ -47,15 +50,12 @@ func Itch(database *sql.DB) error {
 	var downloadKeys []itchDownloadKey
 	for downloadRows.Next() {
 		var key itchDownloadKey
-		var gameJSON []byte
-		if err := downloadRows.Scan(&key.GameID, &gameJSON); err != nil {
+		var title, url sql.NullString
+		if err := downloadRows.Scan(&key.GameID, &title, &url); err != nil {
 			downloadRows.Close()
 			return fmt.Errorf("scan itch download key: %w", err)
 		}
-		if err := json.Unmarshal(gameJSON, &key.Game); err != nil {
-			log.Printf("warning: parse itch game %d: %v", key.GameID, err)
-			continue
-		}
+		key.Game = itchGame{ID: key.GameID, Title: title.String, URL: url.String}
 		downloadKeys = append(downloadKeys, key)
 	}
 	if err := downloadRows.Err(); err != nil {

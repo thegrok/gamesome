@@ -27,11 +27,11 @@ var itchButlerDBPath = filepath.Join(os.Getenv("HOME"), ".config", "itch", "db",
 ### Structs
 
 ```go
-// from download_keys.game JSON column
+// from the games table (joined on download_keys.game_id)
 type itchGame struct {
-    ID    int64  `json:"id"`
-    Title string `json:"title"`
-    URL   string `json:"url"`
+    ID    int64
+    Title string
+    URL   string
 }
 
 type itchDownloadKey struct {
@@ -48,11 +48,14 @@ type itchCave struct {
 ### `Itch(database *sql.DB) error`
 
 1. Open butler.db read-only: `sql.Open("sqlite", itchButlerDBPath+"?mode=ro")`
-2. Query `download_keys` for owned games:
+2. Query owned games by joining `download_keys` to `games`:
    ```sql
-   SELECT game_id, game FROM download_keys
+   SELECT dk.game_id, g.title, g.url
+   FROM download_keys dk
+   JOIN games g ON g.id = dk.game_id
    ```
-   Parse the `game` column as JSON into `itchGame`.
+   Scan `title`/`url` as `sql.NullString` (nullable columns). No JSON parsing —
+   butler's schema is normalized, there is no `game` blob column on `download_keys`.
 3. Query `caves` for installed games:
    ```sql
    SELECT game_id, install_folder_name FROM caves

@@ -15,13 +15,15 @@ login required. We should read it the same way Steam/Heroic read their local sto
 ## Approach
 
 Read `butler.db` directly (read-only) using `modernc.org/sqlite` (already a dep).
-Two tables matter:
+Three tables matter:
 
-- **`download_keys`** — one row per owned game (`game_id`, `game` JSON blob with title/url)
-- **`caves`** — one row per install (`game_id`, `install_folder_name`, `verdict` JSON)
+- **`download_keys`** — one row per owned game (`game_id`, `owner_id`, timestamps). No title/url here.
+- **`games`** — game metadata, keyed by `id` (`title`, `url`, `short_text`, …)
+- **`caves`** — one row per install (`game_id`, `install_folder_name`, `verdict` TEXT)
 
 Owned = appears in `download_keys`. Installed = also appears in `caves`.
-The `game` column in `download_keys` is a JSON blob with `id`, `title`, `url`.
+Butler's schema is normalized: `download_keys` holds only `game_id`, so we
+`JOIN games ON games.id = download_keys.game_id` to get `title` and `url`.
 The `install_folder_name` in caves gives the local path (under itch's install root,
 which is also discoverable from the preference files, but defaults to `~/Applications/itch`
 on Linux). We can reconstruct `install_path` as `<itch-install-root>/<install_folder_name>`.
