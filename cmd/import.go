@@ -16,24 +16,6 @@ var importCmd = &cobra.Command{
 	Short: "Import games from a launcher",
 }
 
-var importHeroicCmd = &cobra.Command{
-	Use:   "heroic",
-	Short: "Import from Epic Games via Legendary",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		database, err := db.Open()
-		if err != nil {
-			return fmt.Errorf("open db: %w", err)
-		}
-		defer database.Close()
-
-		if err := importer.Heroic(database); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		db.SetMeta(database, "last_import_heroic", time.Now().UTC().Format(time.RFC3339))
-		return nil
-	},
-}
 
 var importSteamCmd = &cobra.Command{
 	Use:   "steam",
@@ -80,7 +62,6 @@ Use --dry-run to preview matches without modifying the database.`,
 			os.Exit(1)
 		}
 
-		// Print results
 		if !result.CollectionFound {
 			fmt.Printf("Collection %q not found in Steam data\n", collectionName)
 			os.Exit(1)
@@ -112,25 +93,6 @@ Use --dry-run to preview matches without modifying the database.`,
 	},
 }
 
-var importGOGCmd = &cobra.Command{
-	Use:   "gog",
-	Short: "Import from GOG via Heroic/nile cache",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		database, err := db.Open()
-		if err != nil {
-			return fmt.Errorf("open db: %w", err)
-		}
-		defer database.Close()
-
-		if err := importer.HeroicGOG(database); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		db.SetMeta(database, "last_import_gog", time.Now().UTC().Format(time.RFC3339))
-		return nil
-	},
-}
-
 var importItchCmd = &cobra.Command{
 	Use:   "itch",
 	Short: "Import from itch.io (butler.db)",
@@ -150,12 +112,51 @@ var importItchCmd = &cobra.Command{
 	},
 }
 
+var importGOGCmd = &cobra.Command{
+	Use:   "gog",
+	Short: "Import from GOG (Heroic cache → GOG Galaxy fallback)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database, err := db.Open()
+		if err != nil {
+			return fmt.Errorf("open db: %w", err)
+		}
+		defer database.Close()
+
+		if err := importer.GOG(database); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		db.SetMeta(database, "last_import_gog", time.Now().UTC().Format(time.RFC3339))
+		return nil
+	},
+}
+
+
+var importEpicCmd = &cobra.Command{
+	Use:   "epic",
+	Short: "Import games from Epic Games Launcher (Windows/macOS)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database, err := db.Open()
+		if err != nil {
+			return fmt.Errorf("open db: %w", err)
+		}
+		defer database.Close()
+
+		if err := importer.Epic(database); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		db.SetMeta(database, "last_import_epic", time.Now().UTC().Format(time.RFC3339))
+		return nil
+	},
+}
+
 func init() {
-	importCmd.AddCommand(importHeroicCmd)
-	importCmd.AddCommand(importGOGCmd)
 	importCmd.AddCommand(importSteamCmd)
 	importCmd.AddCommand(importSteamCollectionsCmd)
 	importCmd.AddCommand(importItchCmd)
+	importCmd.AddCommand(importEpicCmd)
+	importCmd.AddCommand(importGOGCmd)
 
 	importSteamCollectionsCmd.Flags().StringP("collection", "c", "Completed", "Name of the collection to import")
 	importSteamCollectionsCmd.Flags().BoolP("dry-run", "d", false, "Preview changes without writing to database")

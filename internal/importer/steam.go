@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -142,15 +143,34 @@ func isSteamTool(name string) bool {
 	return false
 }
 
+func steamAppsDirectories() []string {
+	home, _ := os.UserHomeDir()
+	switch runtime.GOOS {
+	case "windows":
+		var dirs []string
+		if pf86 := os.Getenv("PROGRAMFILES(X86)"); pf86 != "" {
+			dirs = append(dirs, filepath.Join(pf86, "Steam", "steamapps"))
+		}
+		if pf := os.Getenv("PROGRAMFILES"); pf != "" {
+			dirs = append(dirs, filepath.Join(pf, "Steam", "steamapps"))
+		}
+		return dirs
+	case "darwin":
+		return []string{
+			filepath.Join(home, "Library", "Application Support", "Steam", "steamapps"),
+		}
+	default: // linux
+		return []string{
+			filepath.Join(home, ".steam", "steam", "steamapps"),
+			filepath.Join(home, ".local", "share", "Steam", "steamapps"),
+		}
+	}
+}
+
 // steamManifestScan reads local ACF manifests to detect installed games.
-// apiRan=true → just update installed state for existing entries.
-// apiRan=false → insert as owned+installed.
 // Returns (newInserts, installedCount).
 func steamManifestScan(database *sql.DB) (int, int) {
-	candidates := []string{
-		filepath.Join(os.Getenv("HOME"), ".steam", "steam", "steamapps"),
-		filepath.Join(os.Getenv("HOME"), ".local", "share", "Steam", "steamapps"),
-	}
+	candidates := steamAppsDirectories()
 
 	newInserts := 0
 	installedCount := 0

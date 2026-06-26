@@ -6,13 +6,35 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 
 	"github.com/thegrok/gamesom/internal/db"
 	"github.com/thegrok/gamesom/internal/normalize"
 )
 
-var itchButlerDBPath = filepath.Join(os.Getenv("HOME"), ".config", "itch", "db", "butler.db")
+func itchConfigDir() (string, error) {
+	switch runtime.GOOS {
+	case "windows":
+		appdata := os.Getenv("APPDATA")
+		if appdata == "" {
+			return "", fmt.Errorf("APPDATA not set")
+		}
+		return filepath.Join(appdata, "itch"), nil
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, "Library", "Application Support", "itch"), nil
+	default: // linux
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".config", "itch"), nil
+	}
+}
 
 type itchGame struct {
 	ID    int64
@@ -32,9 +54,14 @@ type itchCave struct {
 
 // Itch imports owned and installed games from itch.io's butler database.
 func Itch(database *sql.DB) error {
-	butlerDB, err := sql.Open("sqlite", itchButlerDBPath+"?mode=ro&_busy_timeout=5000")
+	configDir, err := itchConfigDir()
 	if err != nil {
-		return fmt.Errorf("open itch butler database %s: %w", itchButlerDBPath, err)
+		return err
+	}
+	butlerDBPath := filepath.Join(configDir, "db", "butler.db")
+	butlerDB, err := sql.Open("sqlite", butlerDBPath+"?mode=ro&_busy_timeout=5000")
+	if err != nil {
+		return fmt.Errorf("open itch butler database %s: %w", butlerDBPath, err)
 	}
 	defer butlerDB.Close()
 
@@ -108,7 +135,7 @@ func Itch(database *sql.DB) error {
 		installPath := ""
 		if caveFolder, ok := caves[key.GameID]; ok {
 			installed = 1
-			installPath = filepath.Join(itchInstallRoot(), caveFolder)
+			installPath = filepath.Join(configDir, "apps", caveFolder)
 		}
 
 		entry := db.LibraryEntry{
@@ -133,6 +160,3 @@ func Itch(database *sql.DB) error {
 	return nil
 }
 
-func itchInstallRoot() string {
-	return filepath.Join(os.Getenv("HOME"), "Applications", "itch")
-}

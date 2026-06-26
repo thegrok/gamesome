@@ -7,77 +7,80 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/thegrok/gamesom/internal/db"
 	"github.com/thegrok/gamesom/internal/normalize"
 )
 
-var nileLibraryPath = filepath.Join(
-	os.Getenv("HOME"),
-	".var/app/com.heroicgameslauncher.hgl/config/heroic/store_cache/nile_library.json",
-)
-
-var nileInstalledPath = filepath.Join(
-	os.Getenv("HOME"),
-	".var/app/com.heroicgameslauncher.hgl/config/heroic/nileConfig/nile/installed.json",
-)
-
-type nileLibraryFile struct {
-	Library []nileLibraryEntry `json:"library"`
+type gogHeroicLibraryFile struct {
+	Games []gogHeroicEntry `json:"games"`
 }
 
-type nileLibraryEntry struct {
+type gogHeroicEntry struct {
 	AppName     string `json:"app_name"`
+	Runner      string `json:"runner"`
 	Title       string `json:"title"`
 	IsInstalled bool   `json:"is_installed"`
+	Install     struct {
+		IsDLC       bool   `json:"is_dlc"`
+		InstallPath string `json:"install_path"`
+	} `json:"install"`
 }
 
-type nileInstalledEntry struct {
-	AppName     string `json:"app_name"`
-	InstallPath string `json:"install_path"`
+// GOG imports GOG games. On Linux, uses Heroic's gogdl cache (no GOG Galaxy client
+// exists for Linux). On Windows/macOS, goes directly to GOG Galaxy which is
+// authoritative for both ownership and install status.
+func GOG(database *sql.DB) error {
+	if runtime.GOOS == "linux" {
+		return HeroicGOG(database)
+	}
+	return GOGGalaxy(database)
 }
 
-// HeroicGOG imports games from Heroic Launcher's GOG library cache (via nile).
+// HeroicGOG imports games from Heroic Launcher's GOG library cache (via gogdl).
+// Linux only — on Windows/macOS use GOGGalaxy instead.
 func HeroicGOG(database *sql.DB) error {
-	library, err := readNileLibrary()
+	dir, err := heroicConfigDir()
 	if err != nil {
-		return fmt.Errorf("read nile library: %w", err)
+		return err
 	}
 
-	installInfo, err := readNileInstalled()
+	path := filepath.Join(dir, "store_cache", "gog_library.json")
+	data, err := os.ReadFile(path)
 	if err != nil {
-		log.Printf("warning: could not read nile installed.json: %v", err)
-		installInfo = map[string]nileInstalledEntry{}
+		return fmt.Errorf("open %s: %w", path, err)
 	}
 
-	imported := 0
-	installedCount := 0
-	for _, g := range library {
-		if g.Title == "" || g.AppName == "" {
-			log.Printf("warning: skipping gog entry with empty title/app_name")
+	var f gogHeroicLibraryFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		return fmt.Errorf("parse gog_library.json: %w", err)
+	}
+
+	imported, installedCount := 0, 0
+	for _, g := range f.Games {
+		if g.Runner != "gog" || g.Install.IsDLC {
 			continue
 		}
-
+		if g.Title == "" || g.AppName == "" {
+			continue
+		}
 		norm := normalize.Title(g.Title)
 		if norm == "" {
-			log.Printf("warning: normalized title empty for %q, skipping", g.Title)
 			continue
 		}
-
 		gameID, err := db.UpsertGame(database, g.Title, norm)
 		if err != nil {
 			log.Printf("warning: upsert game %q: %v", g.Title, err)
 			continue
 		}
-
-		installPath := ""
 		installedFlag := 0
-		if info, ok := installInfo[g.AppName]; ok {
+		installPath := ""
+		if g.IsInstalled {
 			installedFlag = 1
+			installPath = g.Install.InstallPath
 			installedCount++
-			installPath = info.InstallPath
 		}
-
 		entry := db.LibraryEntry{
 			GameID:       gameID,
 			Source:       "gog",
@@ -86,7 +89,7 @@ func HeroicGOG(database *sql.DB) error {
 			Owned:        1,
 			Installed:    installedFlag,
 			InstallPath:  installPath,
-			LauncherURI:  fmt.Sprintf("nile://launch/%s", g.AppName),
+			LauncherURI:  fmt.Sprintf("goggalaxy://openGame/%s", g.AppName),
 		}
 		if err := db.UpsertLibraryEntry(database, entry); err != nil {
 			log.Printf("warning: upsert library entry %q: %v", g.Title, err)
@@ -95,30 +98,9 @@ func HeroicGOG(database *sql.DB) error {
 		imported++
 	}
 
-	fmt.Printf("Imported %d games from GOG (%d installed)\n", imported, installedCount)
+	if imported == 0 {
+		return fmt.Errorf("no GOG games found in Heroic gog_library.json")
+	}
+	fmt.Printf("Imported %d games from GOG via Heroic (%d installed)\n", imported, installedCount)
 	return nil
-}
-
-func readNileLibrary() ([]nileLibraryEntry, error) {
-	data, err := os.ReadFile(nileLibraryPath)
-	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", nileLibraryPath, err)
-	}
-	var f nileLibraryFile
-	if err := json.Unmarshal(data, &f); err != nil {
-		return nil, fmt.Errorf("parse nile_library.json: %w", err)
-	}
-	return f.Library, nil
-}
-
-func readNileInstalled() (map[string]nileInstalledEntry, error) {
-	data, err := os.ReadFile(nileInstalledPath)
-	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", nileInstalledPath, err)
-	}
-	var info map[string]nileInstalledEntry
-	if err := json.Unmarshal(data, &info); err != nil {
-		return nil, fmt.Errorf("parse nile installed.json: %w", err)
-	}
-	return info, nil
 }
