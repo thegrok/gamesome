@@ -7,21 +7,32 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/thegrok/gamesom/internal/db"
 	"github.com/thegrok/gamesom/internal/normalize"
 )
 
-// heroicLibraryPath is where Heroic (Flatpak) stores the Epic library cache.
-var heroicLibraryPath = filepath.Join(
-	os.Getenv("HOME"),
-	".var/app/com.heroicgameslauncher.hgl/config/heroic/store_cache/legendary_library.json",
-)
-
-var heroicInstalledPath = filepath.Join(
-	os.Getenv("HOME"),
-	".var/app/com.heroicgameslauncher.hgl/config/heroic/legendaryConfig/legendary/installed.json",
-)
+func heroicConfigDir() (string, error) {
+	switch runtime.GOOS {
+	case "linux":
+		return filepath.Join(os.Getenv("HOME"), ".var/app/com.heroicgameslauncher.hgl/config/heroic"), nil
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, "Library", "Application Support", "heroic"), nil
+	case "windows":
+		appdata := os.Getenv("APPDATA")
+		if appdata == "" {
+			return "", fmt.Errorf("APPDATA environment variable not set")
+		}
+		return filepath.Join(appdata, "heroic"), nil
+	default:
+		return "", fmt.Errorf("heroic import not supported on %s", runtime.GOOS)
+	}
+}
 
 type heroicLibraryFile struct {
 	Library []heroicLibraryEntry `json:"library"`
@@ -110,9 +121,14 @@ func Heroic(database *sql.DB) error {
 }
 
 func readHeroicLibrary() ([]heroicLibraryEntry, error) {
-	data, err := os.ReadFile(heroicLibraryPath)
+	dir, err := heroicConfigDir()
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", heroicLibraryPath, err)
+		return nil, err
+	}
+	path := filepath.Join(dir, "store_cache", "legendary_library.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	var f heroicLibraryFile
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -122,9 +138,14 @@ func readHeroicLibrary() ([]heroicLibraryEntry, error) {
 }
 
 func readHeroicInstalled() (map[string]heroicInstalledEntry, error) {
-	data, err := os.ReadFile(heroicInstalledPath)
+	dir, err := heroicConfigDir()
 	if err != nil {
-		return nil, fmt.Errorf("open %s: %w", heroicInstalledPath, err)
+		return nil, err
+	}
+	path := filepath.Join(dir, "legendaryConfig", "legendary", "installed.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 	var info map[string]heroicInstalledEntry
 	if err := json.Unmarshal(data, &info); err != nil {

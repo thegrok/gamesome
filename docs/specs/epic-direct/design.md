@@ -6,65 +6,74 @@ updated: 2026-06-26
 actions: A075
 ---
 
-# Design — Epic Games Launcher direct import (A075)
+# Design — Epic Games import (A075)
 
 ## Problem
 
 On Windows and macOS, users may have Epic Games Launcher installed natively
-without Heroic. The Linux importer (heroic.go) doesn't run on those platforms.
+without Heroic. The Linux importer (heroic.go) didn't run on those platforms.
 EGL manifests only cover locally-installed games, not the full owned library.
 
 ## Approach
 
-Two-layer strategy under a single `gamesom import epic` command:
+Three-layer strategy under a single `gamesom import epic` command, tried in order:
 
-**Layer 1 — Legendary CLI (full library)**
-Legendary is a cross-platform Epic Games CLI that authenticates with Epic's API
-and returns the complete owned library as JSON. `gamesom import epic` auto-installs
-Legendary via the platform package manager if absent, runs `legendary auth`
-interactively if credentials are missing, then calls `legendary list-games --json`.
+**Layer 1 — Heroic cache (preferred)**
+Heroic Games Launcher caches the full owned Epic library as JSON on disk —
+no network call or auth required at import time. Cross-platform paths:
 
-| Platform | Install command                               |
-|----------|-----------------------------------------------|
-| Windows  | `winget install derrod.legendary`             |
-| macOS    | `brew install legendary`                      |
-| Linux    | Not supported — use `gamesom import heroic`   |
+| Platform | Heroic config path                                      |
+|----------|---------------------------------------------------------|
+| Linux    | `~/.var/app/com.heroicgameslauncher.hgl/config/heroic/` |
+| macOS    | `~/Library/Application Support/heroic/`                 |
+| Windows  | `%APPDATA%\heroic\`                                     |
 
-**Layer 2 — EGL manifests (installed status)**
-`legendary list-installed` only knows games Legendary itself installed. Games
-installed through the Epic Games Launcher are tracked separately in:
+Library: `store_cache/legendary_library.json`
+Installed: `legendaryConfig/legendary/installed.json`
 
-| Platform | Path                                                                     |
-|----------|--------------------------------------------------------------------------|
-| Windows  | `%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests\`                   |
-| macOS    | `~/Library/Application Support/Epic/EpicGamesLauncher/Data/Manifests/`   |
+**Layer 2 — Legendary CLI**
+For users who have Legendary but not Heroic. Auto-installs on Windows via
+winget. On macOS, prints install instructions (`brew install pipx && pipx
+install legendary-gl`) and falls through to Layer 3 without prompting.
 
-Each `.item` file (JSON) contains `AppName`, `DisplayName`, `InstallLocation`,
-`bIsIncompleteInstall`, and `AppCategories`. The library from Legendary is
-cross-referenced against these manifests to set installed status and install path.
+**Layer 3 — EGL manifests (installed-only fallback)**
+Reads `.item` files directly from the Epic Games Launcher manifests directory.
+Only locally-installed games are visible; ownership = file exists.
+
+| Platform | Path                                                                   |
+|----------|------------------------------------------------------------------------|
+| Windows  | `%PROGRAMDATA%\Epic\EpicGamesLauncher\Data\Manifests\`                 |
+| macOS    | `~/Library/Application Support/Epic/EpicGamesLauncher/Data/Manifests/` |
 
 DLC filter: `AppCategories` must contain `"games"`.
-Source tag: `"epic"` (matches heroic.go — idempotent upsert handles overlap).
-LauncherURI: `com.epicgames.launcher://apps/<AppName>?action=launch`.
+Source tag: `"epic"` across all layers (idempotent upsert handles overlap).
+LauncherURI: `legendary://launch/<AppName>` (Heroic/Legendary layers), or
+`com.epicgames.launcher://apps/<AppName>?action=launch` (EGL direct fallback).
 
-**Fallback**
-If the user declines to install Legendary, the command falls back to importing
-only locally-installed games from the EGL manifests (owned = installed in that case).
+## GOG
+
+`gamesom import gog` reads Heroic's nile cache (same config dir, same
+cross-platform path resolution). No non-Heroic GOG fallback yet.
 
 ## Scope
 
 In:
-- Windows + macOS (runtime.GOOS switch for manifest path and package manager)
-- Full owned library via Legendary, installed status via EGL manifests
-- Auto-install Legendary with user prompt; auto-run auth flow if needed
-- Write library_entries with source=epic
+
+- Linux + macOS + Windows (`heroicConfigDir()` switch in heroic.go covers all)
+- Full owned library via Heroic cache; installed status via installed.json
+- Legendary CLI fallback (Windows auto-install, macOS hint + fall-through)
+- EGL manifest fallback (installed games only, Windows/macOS)
+- GOG via Heroic nile cache (`import gog`)
 
 Out:
-- Linux (covered by heroic.go)
-- No metadata enrichment beyond what Legendary/manifests provide
+
+- Non-Heroic GOG fallback (GOG Galaxy direct — future)
+- No metadata enrichment beyond what Heroic/Legendary/manifests provide
 
 ## Files changed
 
-- `internal/importer/epic.go` — `EpicInstalledMap()`, unified `Epic()` entry point, `epicFromManifests()` fallback
-- `internal/importer/legendary.go` — Legendary detection, winget/brew install prompt with fresh-PATH resolution, auth flow, `list-games --json` fetch
-- `cmd/import.go` — `import epic` subcommand
+- `internal/importer/heroic.go` — `heroicConfigDir()` cross-platform switch replacing hardcoded Flatpak paths
+- `internal/importer/epic.go` — `Epic()` tries Heroic cache first via `epicFromHeroicCache()`, then Legendary CLI, then EGL manifests
+- `internal/importer/legendary.go` — Legendary detection, winget install prompt, macOS hint, auth flow, `list-games --json`
+- `internal/importer/heroic_gog.go` — `HeroicGOG()` reads nile cache using `heroicConfigDir()`
+- `cmd/import.go` — `import epic` and `import gog` subcommands

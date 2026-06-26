@@ -14,7 +14,6 @@ type legendaryGame struct {
 	AppTitle string `json:"app_title"`
 }
 
-
 func findLegendary() (string, error) {
 	return findLegendaryWithFreshPath(false)
 }
@@ -48,35 +47,27 @@ func promptInstallLegendary() error {
 	case "linux":
 		return fmt.Errorf("legendary not found on Linux; use 'gamesom import heroic' instead")
 	case "darwin":
-		if _, err := exec.LookPath("brew"); err != nil {
-			return fmt.Errorf("legendary not found and Homebrew is not installed\nInstall Homebrew first (https://brew.sh), then run: brew install legendary")
-		}
+		// Don't auto-install on macOS — the Python toolchain is too fragile.
+		// Print a one-liner and let Epic() fall back to EGL manifests.
+		fmt.Println("legendary not found. To import your full Epic library, install it manually:")
+		fmt.Println("  brew install pipx && pipx install legendary-gl")
+		return fmt.Errorf("legendary not installed")
 	}
 
-	pkgCmd := legendaryPkgCmd()
-	fmt.Printf("legendary not found. Install via `%s`? [y/N] ", strings.Join(pkgCmd, " "))
+	// Windows: auto-install via winget.
+	fmt.Printf("legendary not found. Install via `winget install derrod.legendary`? [y/N] ")
 	var resp string
 	fmt.Scanln(&resp)
 	if strings.ToLower(strings.TrimSpace(resp)) != "y" {
 		return fmt.Errorf("aborted")
 	}
 
-	cmd := exec.Command(pkgCmd[0], pkgCmd[1:]...)
+	cmd := exec.Command("winget", "install", "derrod.legendary")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	// Ignore exit code — winget exits non-zero for "no upgrade available"
-	// which is not a real failure. findLegendaryWithFreshPath will confirm.
+	// Ignore exit code — winget exits non-zero for "no upgrade needed".
 	_ = cmd.Run()
 	return nil
-}
-
-func legendaryPkgCmd() []string {
-	switch runtime.GOOS {
-	case "windows":
-		return []string{"winget", "install", "derrod.legendary"}
-	default: // darwin
-		return []string{"brew", "install", "legendary"}
-	}
 }
 
 func legendaryListGames(bin string) ([]byte, error) {
@@ -94,7 +85,6 @@ func legendaryListGames(bin string) ([]byte, error) {
 			if authErr := authCmd.Run(); authErr != nil {
 				return nil, fmt.Errorf("legendary auth failed: %w", authErr)
 			}
-			// Retry after successful auth
 			var retryStderr strings.Builder
 			retryCmd := exec.Command(bin, "list-games", "--json")
 			retryCmd.Stderr = &retryStderr
@@ -110,4 +100,3 @@ func legendaryListGames(bin string) ([]byte, error) {
 	}
 	return out, nil
 }
-
