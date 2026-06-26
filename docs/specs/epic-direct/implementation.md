@@ -1,185 +1,84 @@
 ---
 feature: epic-direct
-status: draft
+status: implemented
 created: 2026-06-24
+updated: 2026-06-26
 owner: claude
 ---
 
-# Implementation — Epic Games Launcher direct import (A075)
+# Implementation — Epic Games import (A075)
 
 ## Scope
 
-In: internal/importer/epic.go (new) + cmd/import.go (wire subcommand)
-Out: no changes to other importers, no Linux path
+In: `epic.go`, `legendary.go`, `heroic.go`, `heroic_gog.go`, `cmd/import.go`
+Out: no schema changes, no new dependencies
 
 ## Load-bearing contract
 
-- runtime.GOOS switch: "windows" uses %PROGRAMDATA%, "darwin" uses ~/Library/...
-- Only files with extension .item are read from the manifests dir
-- DLC filter: skip entries where AppCategories does not contain "games"
-- Installed = bIsInstalled == true AND bIsIncompleteInstall == false
-- Source tag: "epic" (matches heroic.go — idempotent upsert handles overlap)
-- On Linux: return a clear error ("epic import not supported on Linux; use gamesom import heroic")
+- `Epic()` tries layers in order: Heroic cache → Legendary CLI → EGL manifests
+- Heroic cache is the preferred path: no auth, full library, cross-platform
+- `heroicConfigDir()` in `heroic.go` drives the platform switch for all Heroic-based importers
+- Legendary on macOS: print install hint and fall through (no prompt); Windows: winget auto-install
+- EGL manifests: Windows/macOS only; owned = file exists; DLC filter via `AppCategories`
+- `HeroicGOG()` shares `heroicConfigDir()` — adding a platform adds GOG support for free
+- Source tag `"epic"` across all Epic layers; `"gog"` for GOG; idempotent upserts handle overlap
 
-## internal/importer/epic.go
+## `internal/importer/heroic.go`
+
+Replaced hardcoded Flatpak paths with `heroicConfigDir() (string, error)`:
 
 ```go
-package importer
-
-import (
-    "database/sql"
-    "encoding/json"
-    "fmt"
-    "log"
-    "os"
-    "path/filepath"
-    "runtime"
-    "strings"
-
-    "github.com/thegrok/gamesom/internal/db"
-    "github.com/thegrok/gamesom/internal/normalize"
-)
-
-type epicManifest struct {
-    AppName              string   `json:"AppName"`
-    DisplayName          string   `json:"DisplayName"`
-    InstallLocation      string   `json:"InstallLocation"`
-    BIsInstalled         bool     `json:"bIsInstalled"`
-    BIsIncompleteInstall bool     `json:"bIsIncompleteInstall"`
-    AppCategories        []string `json:"AppCategories"`
-}
-
-func epicManifestsDir() (string, error) {
+func heroicConfigDir() (string, error) {
     switch runtime.GOOS {
-    case "windows":
-        pd := os.Getenv("PROGRAMDATA")
-        if pd == "" {
-            pd = `C:\ProgramData`
-        }
-        return filepath.Join(pd, "Epic", "EpicGamesLauncher", "Data", "Manifests"), nil
+    case "linux":
+        return filepath.Join(os.Getenv("HOME"), ".var/app/com.heroicgameslauncher.hgl/config/heroic"), nil
     case "darwin":
-        home, err := os.UserHomeDir()
-        if err != nil {
-            return "", err
-        }
-        return filepath.Join(home, "Library", "Application Support", "Epic", "EpicGamesLauncher", "Data", "Manifests"), nil
-    default:
-        return "", fmt.Errorf("epic import not supported on %s; use gamesom import heroic", runtime.GOOS)
+        home, _ := os.UserHomeDir()
+        return filepath.Join(home, "Library", "Application Support", "heroic"), nil
+    case "windows":
+        return filepath.Join(os.Getenv("APPDATA"), "heroic"), nil
     }
-}
-
-// Epic imports games from the Epic Games Launcher manifests directory.
-func Epic(database *sql.DB) error {
-    dir, err := epicManifestsDir()
-    if err != nil {
-        return err
-    }
-
-    entries, err := os.ReadDir(dir)
-    if err != nil {
-        return fmt.Errorf("read epic manifests dir %s: %w", dir, err)
-    }
-
-    imported, installedCount := 0, 0
-    for _, entry := range entries {
-        if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".item") {
-            continue
-        }
-
-        data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-        if err != nil {
-            log.Printf("warning: read %s: %v", entry.Name(), err)
-            continue
-        }
-
-        var m epicManifest
-        if err := json.Unmarshal(data, &m); err != nil {
-            log.Printf("warning: parse %s: %v", entry.Name(), err)
-            continue
-        }
-
-        if !isEpicGame(m.AppCategories) {
-            continue
-        }
-        if m.DisplayName == "" || m.AppName == "" {
-            continue
-        }
-
-        norm := normalize.Title(m.DisplayName)
-        if norm == "" {
-            continue
-        }
-
-        gameID, err := db.UpsertGame(database, m.DisplayName, norm)
-        if err != nil {
-            log.Printf("warning: upsert game %q: %v", m.DisplayName, err)
-            continue
-        }
-
-        installed := 0
-        if m.BIsInstalled && !m.BIsIncompleteInstall {
-            installed = 1
-            installedCount++
-        }
-
-        e := db.LibraryEntry{
-            GameID:       gameID,
-            Source:       "epic",
-            SourceGameID: m.AppName,
-            SourceTitle:  m.DisplayName,
-            Owned:        1,
-            Installed:    installed,
-            InstallPath:  m.InstallLocation,
-            LauncherURI:  fmt.Sprintf("com.epicgames.launcher://apps/%s?action=launch", m.AppName),
-        }
-        if err := db.UpsertLibraryEntry(database, e); err != nil {
-            log.Printf("warning: upsert library entry %q: %v", m.DisplayName, err)
-            continue
-        }
-        imported++
-    }
-
-    fmt.Printf("Imported %d games from Epic (%d installed)\n", imported, installedCount)
-    return nil
-}
-
-func isEpicGame(categories []string) bool {
-    for _, c := range categories {
-        if c == "games" {
-            return true
-        }
-    }
-    return false
 }
 ```
 
-## cmd/import.go addition
+`readHeroicLibrary()` and `readHeroicInstalled()` now call `heroicConfigDir()` instead of using package-level path vars.
 
-Add alongside the existing import subcommands:
+## `internal/importer/epic.go`
 
-```go
-var importEpicCmd = &cobra.Command{
-    Use:   "epic",
-    Short: "Import games from Epic Games Launcher (Windows/macOS)",
-    RunE: func(cmd *cobra.Command, args []string) error {
-        database, err := db.Open(dbPath)
-        if err != nil {
-            return err
-        }
-        defer database.Close()
-        return importer.Epic(database)
-    },
-}
+`Epic()` entry point:
 
-func init() {
-    importCmd.AddCommand(importEpicCmd)
-}
+```text
+Epic()
+  → epicFromHeroicCache()   // reads heroic legendary_library.json + installed.json
+  → findLegendary() + legendaryListGames() + EpicInstalledMap()
+  → epicFromManifests()     // EGL .item files, Windows/macOS only
 ```
+
+`epicFromHeroicCache()` calls `readHeroicLibrary()` / `readHeroicInstalled()` from `heroic.go`,
+upserts with `LauncherURI = "legendary://launch/<AppName>"`.
+
+Legendary and EGL paths use `LauncherURI = "com.epicgames.launcher://apps/<AppName>?action=launch"`.
+
+## `internal/importer/legendary.go`
+
+- `findLegendary()` / `findLegendaryWithFreshPath()` — PATH lookup; Windows also checks registry-updated PATH via PowerShell
+- `promptInstallLegendary()` — Windows: winget prompt; macOS: print hint + return error (triggers manifest fallback); Linux: hard error
+- `legendaryListGames()` — runs `legendary list-games --json`, handles unauthenticated case with interactive `legendary auth`
+
+## `internal/importer/heroic_gog.go`
+
+`HeroicGOG()` reads `store_cache/nile_library.json` and `nileConfig/nile/installed.json`
+via `heroicConfigDir()`. Source tag `"gog"`, LauncherURI `"nile://launch/<AppName>"`.
+
+## `cmd/import.go`
+
+- `import epic` → `importer.Epic(database)` + sets `last_import_epic` meta
+- `import gog` → `importer.HeroicGOG(database)` + sets `last_import_gog` meta
 
 ## Verification
 
-- go build ./...
-- go vet ./...
-- go test ./...
-- gamesom import epic — should list count of games imported and installed
-- Cross-check a known game title appears in gamesom status output
+- `go build ./...` ✓
+- `go vet ./...` ✓
+- `go test ./...` ✓
+- `gamesom import epic` → 406 games via Heroic on macOS
+- `gamesom import gog` → runs (0 games without GOG login in Heroic)

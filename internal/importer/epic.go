@@ -19,6 +19,7 @@ type epicManifest struct {
 	AppName              string   `json:"AppName"`
 	DisplayName          string   `json:"DisplayName"`
 	InstallLocation      string   `json:"InstallLocation"`
+	BIsInstalled         bool     `json:"bIsInstalled"`
 	BIsIncompleteInstall bool     `json:"bIsIncompleteInstall"`
 	AppCategories        []string `json:"AppCategories"`
 }
@@ -77,10 +78,12 @@ func EpicInstalledMap() (map[string]epicManifest, error) {
 }
 
 // Epic imports the full Epic Games library.
-// It tries Legendary first for the complete owned library; if Legendary is
-// unavailable and the user declines to install it, it falls back to reading
-// only locally-installed games from the EGL manifests directory.
+// Priority: Heroic cache → Legendary CLI → EGL manifests (installed-only fallback).
 func Epic(database *sql.DB) error {
+	if err := epicFromHeroicCache(database); err == nil {
+		return nil
+	}
+
 	bin, err := findLegendary()
 	if err != nil {
 		if installErr := promptInstallLegendary(); installErr != nil {
@@ -151,6 +154,64 @@ func Epic(database *sql.DB) error {
 	}
 
 	fmt.Printf("Imported %d games from Epic via Legendary (%d installed)\n", imported, installedCount)
+	return nil
+}
+
+// epicFromHeroicCache imports the Epic library from Heroic's legendary cache.
+func epicFromHeroicCache(database *sql.DB) error {
+	library, err := readHeroicLibrary()
+	if err != nil {
+		return err
+	}
+
+	installInfo, err := readHeroicInstalled()
+	if err != nil {
+		log.Printf("warning: could not read heroic installed.json: %v", err)
+		installInfo = map[string]heroicInstalledEntry{}
+	}
+
+	imported, installedCount := 0, 0
+	for _, g := range library {
+		if g.Install.IsDLC {
+			continue
+		}
+		if g.Title == "" || g.AppName == "" {
+			continue
+		}
+		norm := normalize.Title(g.Title)
+		if norm == "" {
+			continue
+		}
+		gameID, err := db.UpsertGame(database, g.Title, norm)
+		if err != nil {
+			log.Printf("warning: upsert game %q: %v", g.Title, err)
+			continue
+		}
+		installedFlag := 0
+		installPath := ""
+		if info, ok := installInfo[g.AppName]; ok {
+			installedFlag = 1
+			installPath = info.InstallPath
+			installedCount++
+		}
+		e := db.LibraryEntry{
+			GameID:       gameID,
+			Source:       "epic",
+			SourceGameID: g.AppName,
+			SourceTitle:  g.Title,
+			Owned:        1,
+			Installed:    installedFlag,
+			InstallPath:  installPath,
+			LauncherURI:  fmt.Sprintf("legendary://launch/%s", g.AppName),
+		}
+		if err := db.UpsertLibraryEntry(database, e); err != nil {
+			log.Printf("warning: upsert library entry %q: %v", g.Title, err)
+			continue
+		}
+		imported++
+	}
+
+	fmt.Printf("Imported %d games from Epic via Heroic (%d installed)\n", imported, installedCount)
 	return nil
 }
 
