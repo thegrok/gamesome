@@ -93,6 +93,9 @@ func HeroicGOG(database *sql.DB) error {
 		imported++
 	}
 
+	if imported == 0 {
+		return fmt.Errorf("no GOG games found in Heroic nile cache")
+	}
 	fmt.Printf("Imported %d games from GOG via Heroic (%d installed)\n", imported, installedCount)
 	return nil
 }
