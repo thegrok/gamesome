@@ -1,84 +1,100 @@
 ---
-feature: epic-direct
+feature: cross-platform-importers
 status: implemented
 created: 2026-06-24
-updated: 2026-06-26
+updated: 2026-06-27
 owner: claude
 ---
 
-# Implementation — Epic Games import (A075)
+# Implementation — Cross-platform importers (A075, A076)
 
 ## Scope
 
-In: `epic.go`, `legendary.go`, `heroic.go`, `heroic_gog.go`, `cmd/import.go`
-Out: no schema changes, no new dependencies
+In: `heroic.go`, `epic.go`, `legendary.go`, `heroic_gog.go`, `gog.go`, `steam.go`, `itch.go`, `cmd/import.go`
+Out: no schema changes
 
-## Load-bearing contract
+## Load-bearing contracts
 
-- `Epic()` tries layers in order: Heroic cache → Legendary CLI → EGL manifests
-- Heroic cache is the preferred path: no auth, full library, cross-platform
-- `heroicConfigDir()` in `heroic.go` drives the platform switch for all Heroic-based importers
-- Legendary on macOS: print install hint and fall through (no prompt); Windows: winget auto-install
-- EGL manifests: Windows/macOS only; owned = file exists; DLC filter via `AppCategories`
-- `HeroicGOG()` shares `heroicConfigDir()` — adding a platform adds GOG support for free
-- Source tag `"epic"` across all Epic layers; `"gog"` for GOG; idempotent upserts handle overlap
+- `heroicConfigDir()` is the single platform switch for all Heroic-based importers
+- `Epic()`: Heroic cache → Legendary CLI → EGL manifests, in order; first success wins
+- `GOG()`: Linux → `HeroicGOG()` (gogdl cache); Windows/macOS → `GOGGalaxy()` (Galaxy SQLite)
+- `HeroicGOG()` reads `gog_library.json` — NOT `nile_library.json` (that is Amazon Games / nile)
+- `GOGGalaxy()` uses the unofficial but stable Galaxy 2.0 schema; errors clearly if tables missing
+- Legendary on macOS: print hint + fall through (no prompt); Windows: winget auto-install
+- Source tags: `"epic"` across all Epic layers; `"gog"` across all GOG paths
 
 ## `internal/importer/heroic.go`
 
-Replaced hardcoded Flatpak paths with `heroicConfigDir() (string, error)`:
+`heroicConfigDir()` replaces hardcoded Flatpak paths:
 
 ```go
-func heroicConfigDir() (string, error) {
-    switch runtime.GOOS {
-    case "linux":
-        return filepath.Join(os.Getenv("HOME"), ".var/app/com.heroicgameslauncher.hgl/config/heroic"), nil
-    case "darwin":
-        home, _ := os.UserHomeDir()
-        return filepath.Join(home, "Library", "Application Support", "heroic"), nil
-    case "windows":
-        return filepath.Join(os.Getenv("APPDATA"), "heroic"), nil
-    }
+switch runtime.GOOS {
+case "linux":   return filepath.Join(os.Getenv("HOME"), ".var/app/com.heroicgameslauncher.hgl/config/heroic"), nil
+case "darwin":  return filepath.Join(home, "Library", "Application Support", "heroic"), nil
+case "windows": return filepath.Join(os.Getenv("APPDATA"), "heroic"), nil
 }
 ```
 
-`readHeroicLibrary()` and `readHeroicInstalled()` now call `heroicConfigDir()` instead of using package-level path vars.
-
 ## `internal/importer/epic.go`
 
-`Epic()` entry point:
-
-```text
+```
 Epic()
-  → epicFromHeroicCache()   // reads heroic legendary_library.json + installed.json
-  → findLegendary() + legendaryListGames() + EpicInstalledMap()
-  → epicFromManifests()     // EGL .item files, Windows/macOS only
+  → epicFromHeroicCache()     // legendary_library.json + installed.json
+  → findLegendary() → legendaryListGames() + EpicInstalledMap()
+  → epicFromManifests()       // EGL .item files, Windows/macOS only
 ```
 
-`epicFromHeroicCache()` calls `readHeroicLibrary()` / `readHeroicInstalled()` from `heroic.go`,
-upserts with `LauncherURI = "legendary://launch/<AppName>"`.
-
-Legendary and EGL paths use `LauncherURI = "com.epicgames.launcher://apps/<AppName>?action=launch"`.
+`EpicInstalledMap()` is exported so Legendary layer can cross-reference EGL for install status.
 
 ## `internal/importer/legendary.go`
 
-- `findLegendary()` / `findLegendaryWithFreshPath()` — PATH lookup; Windows also checks registry-updated PATH via PowerShell
-- `promptInstallLegendary()` — Windows: winget prompt; macOS: print hint + return error (triggers manifest fallback); Linux: hard error
-- `legendaryListGames()` — runs `legendary list-games --json`, handles unauthenticated case with interactive `legendary auth`
+- `findLegendary()` — PATH lookup; Windows also checks registry-updated PATH via PowerShell
+- `promptInstallLegendary()` — Windows: winget; macOS: print hint + return error (triggers EGL fallback); Linux: hard error
+- `legendaryListGames()` — `legendary list-games --json`; handles unauthenticated with interactive auth
 
 ## `internal/importer/heroic_gog.go`
 
-`HeroicGOG()` reads `store_cache/nile_library.json` and `nileConfig/nile/installed.json`
-via `heroicConfigDir()`. Source tag `"gog"`, LauncherURI `"nile://launch/<AppName>"`.
+`GOG()` platform router:
+```go
+func GOG(database *sql.DB) error {
+    if runtime.GOOS == "linux" {
+        return HeroicGOG(database)
+    }
+    return GOGGalaxy(database)
+}
+```
+
+`HeroicGOG()` reads `store_cache/gog_library.json` (`{"games": [...]}` key, gogdl format).
+Uses `runner == "gog"` filter and `install.is_dlc` to skip DLC.
+Uses `is_installed` + `install.install_path` inline — no separate installed.json needed.
+LauncherURI: `goggalaxy://openGame/<app_name>`.
+
+## `internal/importer/gog.go`
+
+`GOGGalaxy()` reads GOG Galaxy's SQLite database:
+- `LibraryReleases` for owned games (releaseKey format: `gog_<numeric_id>`)
+- `GamePieceTypes` to resolve title type ID
+- `GamePieces` for title JSON (`{"title": "..."}`)
+- `InstalledBaseProducts` for install paths (keyed by int64 productId)
+
+Errors explicitly if `GamePieceTypes` lookup fails (schema change detection).
 
 ## `cmd/import.go`
 
-- `import epic` → `importer.Epic(database)` + sets `last_import_epic` meta
-- `import gog` → `importer.HeroicGOG(database)` + sets `last_import_gog` meta
+- `import epic` → `importer.Epic()`
+- `import gog` → `importer.GOG()` (platform-routed)
+- `import gog-galaxy` → `importer.GOGGalaxy()` (direct override)
 
 ## Verification
 
-- `go build ./...` ✓
-- `go vet ./...` ✓
-- `go test ./...` ✓
-- `gamesom import epic` → 406 games via Heroic on macOS
-- `gamesom import gog` → runs (0 games without GOG login in Heroic)
+| Platform | Store | Result |
+|----------|-------|--------|
+| macOS    | Epic (Heroic cache) | 406 games ✓ |
+| macOS    | Steam | ✓ |
+| macOS    | itch  | ✓ |
+| Windows  | Epic (EGL manifests) | ✓ |
+| Windows  | GOG Galaxy | 479 games, 10 installed ✓ |
+| Windows  | Steam | ✓ |
+| Windows  | itch  | ✓ |
+| Linux    | GOG via Heroic | code fixed (gog_library.json); re-verification needed after nile→gogdl fix |
+| Windows  | Heroic | code exists; untested against real Heroic Windows install |
