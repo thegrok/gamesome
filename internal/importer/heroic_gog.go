@@ -26,6 +26,17 @@ type nileInstalledEntry struct {
 	InstallPath string `json:"install_path"`
 }
 
+// GOG imports GOG games with a Heroic-first fallback to GOG Galaxy direct.
+// Tries Heroic's nile cache first (all platforms); falls back to GOG Galaxy
+// SQLite on Windows/macOS if Heroic is not installed or has no GOG library.
+func GOG(database *sql.DB) error {
+	if err := HeroicGOG(database); err == nil {
+		return nil
+	}
+	fmt.Println("Heroic GOG cache not found — trying GOG Galaxy direct...")
+	return GOGGalaxy(database)
+}
+
 // HeroicGOG imports games from Heroic Launcher's GOG library cache (via nile).
 func HeroicGOG(database *sql.DB) error {
 	dir, err := heroicConfigDir()

@@ -133,7 +133,7 @@ var importItchCmd = &cobra.Command{
 
 var importGOGCmd = &cobra.Command{
 	Use:   "gog",
-	Short: "Import from GOG via Heroic/nile cache",
+	Short: "Import from GOG (Heroic cache → GOG Galaxy fallback)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		database, err := db.Open()
 		if err != nil {
@@ -141,11 +141,30 @@ var importGOGCmd = &cobra.Command{
 		}
 		defer database.Close()
 
-		if err := importer.HeroicGOG(database); err != nil {
+		if err := importer.GOG(database); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
 		db.SetMeta(database, "last_import_gog", time.Now().UTC().Format(time.RFC3339))
+		return nil
+	},
+}
+
+var importGOGGalaxyCmd = &cobra.Command{
+	Use:   "gog-galaxy",
+	Short: "Import from GOG Galaxy directly (Windows/macOS)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		database, err := db.Open()
+		if err != nil {
+			return fmt.Errorf("open db: %w", err)
+		}
+		defer database.Close()
+
+		if err := importer.GOGGalaxy(database); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		db.SetMeta(database, "last_import_gog_galaxy", time.Now().UTC().Format(time.RFC3339))
 		return nil
 	},
 }
@@ -176,6 +195,7 @@ func init() {
 	importCmd.AddCommand(importItchCmd)
 	importCmd.AddCommand(importEpicCmd)
 	importCmd.AddCommand(importGOGCmd)
+	importCmd.AddCommand(importGOGGalaxyCmd)
 
 	importSteamCollectionsCmd.Flags().StringP("collection", "c", "Completed", "Name of the collection to import")
 	importSteamCollectionsCmd.Flags().BoolP("dry-run", "d", false, "Preview changes without writing to database")
