@@ -134,8 +134,11 @@ func Itch(database *sql.DB) error {
 		installed := 0
 		installPath := ""
 		if caveFolder, ok := caves[key.GameID]; ok {
-			installed = 1
-			installPath = filepath.Join(configDir, "apps", caveFolder)
+			p := filepath.Join(configDir, "apps", caveFolder)
+			if _, err := os.Stat(p); err == nil {
+				installed = 1
+				installPath = p
+			}
 		}
 
 		entry := db.LibraryEntry{

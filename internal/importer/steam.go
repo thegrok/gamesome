@@ -202,7 +202,12 @@ func steamManifestScan(database *sql.DB) (int, int) {
 			}
 
 			installPath := filepath.Join(dir, "common", installDir)
-			installedCount++
+			if _, err := os.Stat(installPath); err != nil {
+				installPath = ""
+			}
+			if installPath != "" {
+				installedCount++
+			}
 
 			norm := normalize.Title(name)
 			if norm == "" {
@@ -220,13 +225,17 @@ func steamManifestScan(database *sql.DB) (int, int) {
 				appID, gameID,
 			)
 
+			installed := 0
+			if installPath != "" {
+				installed = 1
+			}
 			entry := db.LibraryEntry{
 				GameID:       gameID,
 				Source:       "steam",
 				SourceGameID: appIDStr,
 				SourceTitle:  name,
 				Owned:        1,
-				Installed:    1,
+				Installed:    installed,
 				InstallPath:  installPath,
 			}
 			if err := db.UpsertLibraryEntry(database, entry); err != nil {
