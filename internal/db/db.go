@@ -60,17 +60,25 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 `
 
-// Open returns a ready-to-use DB, creating the data directory and schema if needed.
+// Open returns a ready-to-use DB at the default data location, creating the data
+// directory and schema if needed.
 func Open() (*sql.DB, error) {
 	dir, err := dataDir()
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	return OpenAt(filepath.Join(dir, "gamesom.db"))
+}
+
+// OpenAt returns a ready-to-use DB at the given path, creating the parent
+// directory and applying the schema + enrich migrations. Open is OpenAt at the
+// default data location; tests use OpenAt with a throwaway path so they never
+// touch the user's real database.
+func OpenAt(path string) (*sql.DB, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 
-	path := filepath.Join(dir, "gamesom.db")
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
