@@ -1,15 +1,19 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/thegrok/gamesom/internal/db"
+	"github.com/thegrok/gamesom/internal/importer"
 )
 
 var mcpCmd = &cobra.Command{
@@ -25,6 +29,7 @@ var mcpCmd = &cobra.Command{
 		s := mcp.NewServer(&mcp.Implementation{Name: "gamesom", Version: "v1.0.0"}, nil)
 		registerTools(s, database)
 		registerResources(s, database)
+		registerPrompts(s)
 		return s.Run(cmd.Context(), &mcp.StdioTransport{})
 	},
 }
@@ -91,7 +96,7 @@ func getInt(m map[string]any, key string, def int) int {
 func registerTools(s *mcp.Server, database *sql.DB) {
 	s.AddTool(&mcp.Tool{
 		Name:        "list_games",
-		Description: "List games from the library with optional filters.",
+		Description: "List games from the library with optional filters. Fit-to-the-moment judgment only — installed/owned state here is authoritative; never infer ownership beyond what this returns.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -152,7 +157,7 @@ func registerTools(s *mcp.Server, database *sql.DB) {
 
 	s.AddTool(&mcp.Tool{
 		Name:        "search_games",
-		Description: "Search games by title using a case-insensitive substring match.",
+		Description: "Search games by title using a case-insensitive substring match. Fit-to-the-moment judgment only — installed/owned state here is authoritative; never infer ownership beyond what this returns.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"required": ["query"],
@@ -186,7 +191,7 @@ func registerTools(s *mcp.Server, database *sql.DB) {
 
 	s.AddTool(&mcp.Tool{
 		Name:        "get_game",
-		Description: "Get a game with all library entries and its sommelier profile.",
+		Description: "Get a game with all library entries and its sommelier profile. Fit-to-the-moment judgment only — installed/owned state here is authoritative; never infer ownership beyond what this returns.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"required": ["game_id"],
@@ -225,7 +230,7 @@ func registerTools(s *mcp.Server, database *sql.DB) {
 
 	s.AddTool(&mcp.Tool{
 		Name:        "upsert_profile",
-		Description: "Write or partially update the sommelier profile for a game.",
+		Description: "Write or partially update the sommelier profile for a game. Use this to persist sommelier judgments (energy, friction, session fit) you infer during a conversation, not raw game metadata.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"required": ["game_id"],
@@ -305,6 +310,186 @@ func registerTools(s *mcp.Server, database *sql.DB) {
 			return nil, fmt.Errorf("mark completed: %w", err)
 		}
 		return textResult(message), nil
+	})
+
+	s.AddTool(&mcp.Tool{
+		Name: "refresh_library",
+		Description: "Refresh the library by running import for detected (or specified) launchers. " +
+			"The importer remains the sole source of truth for ownership/installed state — this tool " +
+			"only decides when import runs, never what's owned.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"sources": {
+					"type": "array",
+					"items": {"type": "string", "enum": ["steam", "itchio", "gog", "epic"]},
+					"description": "Specific sources to refresh. Omit to auto-detect all launchers present on this machine."
+				}
+			}
+		}`),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := argMap(req)
+		targets := stringSlice(args, "sources")
+		if len(targets) == 0 {
+			targets = importer.DetectedSources()
+		}
+		if len(targets) == 0 {
+			return textResult("No game launchers detected on this machine."), nil
+		}
+
+		var results []refreshSourceResult
+		attempted := 0
+		for _, source := range targets {
+			importFn, known := knownImportSources[source]
+			if !known {
+				results = append(results, refreshSourceResult{Source: source, Message: fmt.Sprintf("unknown source %q", source)})
+				continue
+			}
+			attempted++
+
+			before := countBySource(ctx, database, source)
+			output, err := captureStdout(func() error { return importFn(database) })
+			if err != nil {
+				results = append(results, refreshSourceResult{Source: source, Message: friendlyImportError(source, err)})
+				continue
+			}
+			after := countBySource(ctx, database, source)
+			message := output
+			if message == "" {
+				message = fmt.Sprintf("%s refreshed", source)
+			}
+			results = append(results, refreshSourceResult{Source: source, OK: true, NewGames: after - before, Message: message})
+		}
+		if attempted == 0 {
+			return nil, fmt.Errorf("no known sources in %v", targets)
+		}
+
+		var summaryLines []string
+		for _, r := range results {
+			summaryLines = append(summaryLines, fmt.Sprintf("%s: %s", r.Source, r.Message))
+		}
+		return jsonResult(map[string]any{
+			"summary": strings.Join(summaryLines, "\n"),
+			"results": results,
+		})
+	})
+}
+
+// refreshSourceResult is one launcher's outcome from a refresh_library call.
+type refreshSourceResult struct {
+	Source   string `json:"source"`
+	OK       bool   `json:"ok"`
+	NewGames int    `json:"new_games,omitempty"`
+	Message  string `json:"message"`
+}
+
+var knownImportSources = map[string]func(*sql.DB) error{
+	"steam":  importer.Steam,
+	"itchio": importer.Itch,
+	"gog":    importer.GOG,
+	"epic":   importer.Epic,
+}
+
+func stringSlice(m map[string]any, key string) []string {
+	raw, ok := m[key].([]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func countBySource(ctx context.Context, database *sql.DB, source string) int {
+	var count int
+	database.QueryRowContext(ctx, "SELECT COUNT(*) FROM library_entries WHERE source = ?", source).Scan(&count)
+	return count
+}
+
+// friendlyImportError turns a known importer error into a conversational,
+// actionable message. Unrecognized errors fall back to the raw message rather
+// than guessing at a wrong friendly one.
+func friendlyImportError(source string, err error) string {
+	msg := err.Error()
+	switch source {
+	case "itchio":
+		if strings.Contains(msg, "butler.db") {
+			return "itch.io wasn't found — is it installed?"
+		}
+	case "gog":
+		if strings.Contains(msg, "gog_library.json") || strings.Contains(msg, "galaxy-2.0.db") {
+			return "GOG wasn't found — is it installed (via Heroic on Linux, or GOG Galaxy)?"
+		}
+	case "epic":
+		if strings.Contains(msg, "Manifests") || strings.Contains(msg, "no games found") {
+			return "Epic Games Launcher wasn't found — is it installed?"
+		}
+	}
+	return msg
+}
+
+// captureStdout runs fn with os.Stdout temporarily redirected to a pipe and
+// returns whatever fn wrote to stdout. The MCP stdio transport captures its
+// own reference to the original stdout file descriptor at startup (see
+// go-sdk mcp.StdioTransport.Connect), so this process-wide swap does not
+// affect the JSON-RPC stream it writes to.
+func captureStdout(fn func() error) (string, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return "", fmt.Errorf("create pipe: %w", err)
+	}
+	orig := os.Stdout
+	os.Stdout = w
+
+	outCh := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		io.Copy(&buf, r)
+		outCh <- buf.String()
+	}()
+
+	fnErr := fn()
+
+	os.Stdout = orig
+	w.Close()
+	captured := <-outCh
+	r.Close()
+	return strings.TrimSpace(captured), fnErr
+}
+
+const sommelierBriefing = `You are my Computer Game Sommelier, connected to my game library database.
+
+Your job is not to recommend universally good games.
+Your job is to help me choose from my actual backlog based on tonight's constraints.
+
+The database is the source of truth for what I own and what's installed.
+You only judge fit to the moment — never invent ownership or installed state.
+
+Ask only the minimum needed. Recommend conversationally, not as a formatted report.
+Prefer reducing guilt over maximizing productivity.
+Do not push the fantasy-self game unless I explicitly ask for that kind of commitment.
+
+When you infer sommelier traits about a game (energy required, narrative load, session fit),
+write them back to the sommelier_profile table so they persist for next time.
+
+Before recommending, check the gamesom://library/summary resource. If it's empty
+or looks stale, offer to run refresh_library before making a recommendation.`
+
+func registerPrompts(s *mcp.Server) {
+	s.AddPrompt(&mcp.Prompt{
+		Name:        "sommelier",
+		Description: "Brief Claude as your Computer Game Sommelier for this session.",
+	}, func(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		return &mcp.GetPromptResult{
+			Messages: []*mcp.PromptMessage{{
+				Role:    "user",
+				Content: &mcp.TextContent{Text: sommelierBriefing},
+			}},
+		}, nil
 	})
 }
 

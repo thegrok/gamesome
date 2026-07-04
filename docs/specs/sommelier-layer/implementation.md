@@ -25,12 +25,21 @@ doesn't exist and return `fmt.Errorf(...)`). That asymmetry means "not detected"
 So detection is a **separate pre-check** using each importer's existing (unexported)
 path resolver, stat'd for existence before deciding whether to call it:
 
-| Source | Presence check |
+| Source (as-built key) | Presence check |
 |--------|-----------------|
-| steam  | any dir in `steamAppsDirectories()` exists (`os.Stat`) |
-| itch   | `itchConfigDir()/db/butler.db` exists |
-| gog    | linux: `heroicConfigDir()/store_cache/gog_library.json` exists; else `gogGalaxyDBPath()` exists |
-| epic   | `epicManifestsDir()` exists |
+| `steam`  | any dir in `steamAppsDirectories()` exists (`os.Stat`) |
+| `itchio` | `itchConfigDir()/db/butler.db` exists |
+| `gog`    | linux: `heroicConfigDir()/store_cache/gog_library.json` exists; else `gogGalaxyDBPath()` exists |
+| `epic`   | `epicManifestsDir()` exists |
+
+**Correction caught during implementation:** the source key is `itchio`, not
+`itch` — `internal/importer/itch.go` writes `library_entries.source = "itchio"`
+(confirmed by the `windows-e2e` work-log, which hit the same trap: "asserting
+`itch` would have made `TestE2E_Itch` always fail"). Using `"itch"` anywhere in
+`DetectedSources()`, the tool's `sources` enum, or `countBySource` would silently
+break the before/after diff (querying a source string with zero rows on both
+sides, always reporting `new_games: 0`). All source keys below use the real
+column values.
 
 These resolvers are unexported in `internal/importer`, so the presence check itself
 must live in that package (new file `internal/importer/detect.go`) and export a
@@ -40,9 +49,9 @@ behavior change to the importers.
 **Handler logic** (`refresh_library` in `cmd/mcp.go`):
 
 1. Read optional `sources` arg (`[]string`); if empty, use `importer.DetectedSources()`.
-2. Validate any explicit `sources` entries against the known set (`steam`, `itch`,
-   `gog`, `epic`); unknown names go into the summary as `"unknown source"` errors,
-   not silently dropped.
+2. Validate any explicit `sources` entries against the known set (`steam`,
+   `itchio`, `gog`, `epic`); unknown names go into the summary as
+   `"unknown source"` errors, not silently dropped.
 3. For each source in the resolved list:
    - `before := countBySource(db, source)` — inline `SELECT COUNT(*) FROM
      library_entries WHERE source = ?` (no new `db` package helper needed; matches
