@@ -77,6 +77,26 @@ func EpicInstalledMap() (map[string]epicManifest, error) {
 	return m, nil
 }
 
+// heroicInstalledFromEGL builds heroic-shaped install info from the native
+// Epic Games Launcher manifests, for when Heroic's installed.json is
+// unreadable (e.g. Heroic used only for GOG, Epic games installed natively).
+func heroicInstalledFromEGL() map[string]heroicInstalledEntry {
+	installInfo := map[string]heroicInstalledEntry{}
+	egl, err := EpicInstalledMap()
+	if err != nil {
+		log.Printf("warning: could not read EGL manifests for install status: %v", err)
+		return installInfo
+	}
+	fmt.Println("Using Epic Games Launcher manifests for install status.")
+	for appName, m := range egl {
+		installInfo[appName] = heroicInstalledEntry{
+			AppName:     appName,
+			InstallPath: m.InstallLocation,
+		}
+	}
+	return installInfo
+}
+
 // Epic imports the full Epic Games library.
 // Priority: Heroic cache → Legendary CLI → EGL manifests (installed-only fallback).
 func Epic(database *sql.DB) error {
@@ -167,7 +187,7 @@ func epicFromHeroicCache(database *sql.DB) error {
 	installInfo, err := readHeroicInstalled()
 	if err != nil {
 		log.Printf("warning: could not read heroic installed.json: %v", err)
-		installInfo = map[string]heroicInstalledEntry{}
+		installInfo = heroicInstalledFromEGL()
 	}
 
 	imported, installedCount := 0, 0
