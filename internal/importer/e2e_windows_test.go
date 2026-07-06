@@ -7,6 +7,13 @@
 //
 //	go test -tags e2e ./internal/importer/
 //
+// Installed-state ground truth only the human at the machine knows is
+// declared per source via E2E_EXPECT_INSTALLED_<SOURCE> (STEAM, ITCHIO, GOG,
+// EPIC): unset, a non-empty import reporting zero installed FAILS; set to N,
+// the installed count must equal exactly N, e.g.
+//
+//	E2E_EXPECT_INSTALLED_GOG=0 go test -tags e2e ./internal/importer/
+//
 // They assert invariants that hold for ANY real library rather than a frozen
 // expected answer, so they survive the maintainer installing/uninstalling games
 // and never need re-baselining. This file is `package importer` (an internal
@@ -20,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/thegrok/gamesom/internal/db"
@@ -55,6 +63,7 @@ func assertLibraryInvariants(t *testing.T, database *sql.DB, source string) {
 	defer rows.Close()
 
 	count := 0
+	installedCount := 0
 	for rows.Next() {
 		var sourceGameID, sourceTitle, canonical, normalized string
 		var installPath sql.NullString
@@ -77,6 +86,7 @@ func assertLibraryInvariants(t *testing.T, database *sql.DB, source string) {
 			t.Errorf("[%s] row %q has empty normalized_title", source, sourceGameID)
 		}
 		if installed == 1 {
+			installedCount++
 			if !installPath.Valid || installPath.String == "" {
 				t.Errorf("[%s] row %q marked installed but install_path is empty", source, sourceTitle)
 			} else if _, err := os.Stat(installPath.String); err != nil {
@@ -90,6 +100,24 @@ func assertLibraryInvariants(t *testing.T, database *sql.DB, source string) {
 
 	if count == 0 {
 		t.Errorf("[%s] importer produced 0 library entries (expected a non-empty real library)", source)
+	}
+
+	// Installed-state accuracy: a source that silently under-reports (every
+	// row installed=0) must be indistinguishable from nothing-installed only
+	// when a human says so. E2E_EXPECT_INSTALLED_<SOURCE> pins the count the
+	// human can see in the launcher; unset, zero installed on a non-empty
+	// import is a loud failure (the A100/A102 class of bug).
+	expectEnv := "E2E_EXPECT_INSTALLED_" + strings.ToUpper(source)
+	if v := os.Getenv(expectEnv); v != "" {
+		want, err := strconv.Atoi(v)
+		if err != nil {
+			t.Fatalf("[%s] %s=%q is not an integer", source, expectEnv, v)
+		}
+		if installedCount != want {
+			t.Errorf("[%s] installed count = %d, but %s declares %d", source, installedCount, expectEnv, want)
+		}
+	} else if count > 0 && installedCount == 0 {
+		t.Errorf("[%s] non-empty import (%d rows) reports 0 installed — an under-reporting importer is indistinguishable from an empty machine; if genuinely nothing is installed for this source, declare it: set %s=0", source, count, expectEnv)
 	}
 
 	// No duplicate (source, source_game_id). The DB UNIQUE constraint should make
