@@ -19,6 +19,11 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w -X github.com/thegrok/gamesom/cmd.Version={{.Version}}
+    hooks:
+      post:
+        # One .mcpb bundle per built binary (A095) — manifest + binary zipped
+        # to the MCPB spec, attached to the release via release.extra_files.
+        - cmd: ./scripts/build-mcpb.sh "{{ .Path }}" "{{ .Os }}" "{{ .Arch }}" "{{ .Version }}"
 
 archives:
   - formats:
@@ -32,6 +37,20 @@ archives:
 checksum:
   name_template: checksums.txt
   algorithm: sha256
+
+release:
+  extra_files:
+    - glob: dist/mcpb/*.mcpb
+  footer: |
+    ## One-click install (Claude Desktop)
+
+    Download the `.mcpb` bundle for your platform above, then double-click it
+    (or Claude Desktop → Settings → Extensions → Install Extension). Ask
+    Claude: *"what should I play tonight?"*
+
+    Updating: bundles installed from a file don't auto-update — download the
+    new `.mcpb` and install it over the old one. If tool calls stop
+    responding, toggle the extension off and on in Settings → Extensions.
 
 changelog:
   sort: asc
