@@ -74,6 +74,40 @@ func itchOwnedGames(butlerDB *sql.DB) ([]itchGame, error) {
 	return games, nil
 }
 
+// itchUnkeyedInstalledGames returns games that have an installed cave but no
+// download key. Butler creates no download_keys row when a game is claimed
+// free, so cave-only games (e.g. free claims that are installed right now)
+// are invisible to the keyed query. classification = 'game' matches the
+// keyed query's filter; DISTINCT collapses multi-cave games.
+func itchUnkeyedInstalledGames(butlerDB *sql.DB) ([]itchGame, error) {
+	rows, err := butlerDB.Query(`
+		SELECT DISTINCT c.game_id, g.title, g.url
+		FROM caves c
+		JOIN games g ON g.id = c.game_id
+		WHERE g.classification = 'game'
+		  AND c.game_id NOT IN (SELECT game_id FROM download_keys)`)
+	if err != nil {
+		return nil, fmt.Errorf("query itch unkeyed caves: %w", err)
+	}
+	defer rows.Close()
+
+	var games []itchGame
+	for rows.Next() {
+		var game itchGame
+		var title, url sql.NullString
+		if err := rows.Scan(&game.ID, &title, &url); err != nil {
+			return nil, fmt.Errorf("scan itch unkeyed cave: %w", err)
+		}
+		game.Title = title.String
+		game.URL = url.String
+		games = append(games, game)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read itch unkeyed caves: %w", err)
+	}
+	return games, nil
+}
+
 // itchCavePaths maps game_id → resolved install path for every cave in
 // butler's DB. Butler records where a cave actually lives: a custom folder
 // (full path, set via itch's Preferences), or an install-location row joined
@@ -154,6 +188,11 @@ func Itch(database *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	unkeyed, err := itchUnkeyedInstalledGames(butlerDB)
+	if err != nil {
+		return err
+	}
+	games = append(games, unkeyed...)
 
 	caves, err := itchCavePaths(butlerDB, configDir)
 	if err != nil {
