@@ -47,9 +47,67 @@ type itchDownloadKey struct {
 	Game   itchGame
 }
 
-type itchCave struct {
-	GameID            int64
-	InstallFolderName string
+// itchCavePaths maps game_id → resolved install path for every cave in
+// butler's DB. Butler records where a cave actually lives: a custom folder
+// (full path, set via itch's Preferences), or an install-location row joined
+// by id. The legacy configDir/apps guess is only a last resort — and the
+// whole-query fallback below keeps older butler schemas importing exactly as
+// before this fix.
+func itchCavePaths(butlerDB *sql.DB, configDir string) (map[int64]string, error) {
+	rows, err := butlerDB.Query(`
+		SELECT c.game_id, c.install_folder_name, c.custom_install_folder, l.path
+		FROM caves c
+		LEFT JOIN install_locations l ON c.install_location_id = l.id`)
+	if err != nil {
+		log.Printf("warning: itch caves/install_locations query failed (%v); falling back to legacy apps-dir assumption", err)
+		return itchCavePathsLegacy(butlerDB, configDir)
+	}
+	defer rows.Close()
+
+	paths := make(map[int64]string)
+	for rows.Next() {
+		var gameID int64
+		var folderName, customFolder, locationPath sql.NullString
+		if err := rows.Scan(&gameID, &folderName, &customFolder, &locationPath); err != nil {
+			return nil, fmt.Errorf("scan itch cave: %w", err)
+		}
+		switch {
+		case customFolder.String != "":
+			paths[gameID] = customFolder.String
+		case locationPath.String != "":
+			paths[gameID] = filepath.Join(locationPath.String, folderName.String)
+		default:
+			paths[gameID] = filepath.Join(configDir, "apps", folderName.String)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read itch caves: %w", err)
+	}
+	return paths, nil
+}
+
+// itchCavePathsLegacy is the pre-install_locations behavior: bare folder
+// names from caves, assumed to live under configDir/apps.
+func itchCavePathsLegacy(butlerDB *sql.DB, configDir string) (map[int64]string, error) {
+	rows, err := butlerDB.Query(`SELECT game_id, install_folder_name FROM caves`)
+	if err != nil {
+		return nil, fmt.Errorf("query itch caves: %w", err)
+	}
+	defer rows.Close()
+
+	paths := make(map[int64]string)
+	for rows.Next() {
+		var gameID int64
+		var folderName sql.NullString
+		if err := rows.Scan(&gameID, &folderName); err != nil {
+			return nil, fmt.Errorf("scan itch cave: %w", err)
+		}
+		paths[gameID] = filepath.Join(configDir, "apps", folderName.String)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read itch caves: %w", err)
+	}
+	return paths, nil
 }
 
 // Itch imports owned and installed games from itch.io's butler database.
@@ -91,25 +149,10 @@ func Itch(database *sql.DB) error {
 	}
 	downloadRows.Close()
 
-	caveRows, err := butlerDB.Query(`SELECT game_id, install_folder_name FROM caves`)
+	caves, err := itchCavePaths(butlerDB, configDir)
 	if err != nil {
-		return fmt.Errorf("query itch caves: %w", err)
+		return err
 	}
-
-	caves := make(map[int64]string)
-	for caveRows.Next() {
-		var cave itchCave
-		if err := caveRows.Scan(&cave.GameID, &cave.InstallFolderName); err != nil {
-			caveRows.Close()
-			return fmt.Errorf("scan itch cave: %w", err)
-		}
-		caves[cave.GameID] = cave.InstallFolderName
-	}
-	if err := caveRows.Err(); err != nil {
-		caveRows.Close()
-		return fmt.Errorf("read itch caves: %w", err)
-	}
-	caveRows.Close()
 
 	imported := 0
 	installedCount := 0
@@ -133,8 +176,7 @@ func Itch(database *sql.DB) error {
 
 		installed := 0
 		installPath := ""
-		if caveFolder, ok := caves[key.GameID]; ok {
-			p := filepath.Join(configDir, "apps", caveFolder)
+		if p, ok := caves[key.GameID]; ok {
 			if _, err := os.Stat(p); err == nil {
 				installed = 1
 				installPath = p
