@@ -3,8 +3,10 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	_ "modernc.org/sqlite"
 )
@@ -67,7 +69,11 @@ func Open() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return OpenAt(filepath.Join(dir, "gamesom.db"))
+	legacyDir, err := legacyDataDir()
+	if err != nil {
+		return nil, err
+	}
+	return OpenAt(resolveDBPath(dir, legacyDir))
 }
 
 // OpenAt returns a ready-to-use DB at the given path, creating the parent
@@ -344,14 +350,75 @@ type LibraryEntry struct {
 	LastPlayedAt    *string
 }
 
+// dataDir returns the platform-idiomatic gamesom data directory.
+// XDG_DATA_HOME overrides on every OS — it's also the hermetic-test hook.
 func dataDir() (string, error) {
-	xdg := os.Getenv("XDG_DATA_HOME")
-	if xdg != "" {
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
 		return filepath.Join(xdg, "gamesom"), nil
 	}
+	switch runtime.GOOS {
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			return "", fmt.Errorf("LOCALAPPDATA not set")
+		}
+		return filepath.Join(localAppData, "gamesom"), nil
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, "Library", "Application Support", "gamesom"), nil
+	default: // linux and friends
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".local", "share", "gamesom"), nil
+	}
+}
+
+// legacyDataDir is the pre-A096 data location on every OS: XDG semantics
+// hardcoded, so Windows/macOS DBs landed under ~/.local/share/gamesom.
+func legacyDataDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(home, ".local", "share", "gamesom"), nil
+}
+
+// resolveDBPath returns the DB path under dir, first moving a legacy DB
+// (and its -wal/-shm sidecars) from legacyDir if dir has no DB yet. If the
+// move fails, it returns the legacy path — opening data where it lives
+// beats losing it to an idiomatic location.
+func resolveDBPath(dir, legacyDir string) string {
+	newPath := filepath.Join(dir, "gamesom.db")
+	legacyPath := filepath.Join(legacyDir, "gamesom.db")
+	if newPath == legacyPath {
+		return newPath
+	}
+	if _, err := os.Stat(newPath); err == nil {
+		return newPath // idiomatic DB already exists; legacy (if any) is stale
+	}
+	if _, err := os.Stat(legacyPath); err != nil {
+		return newPath // nothing to migrate
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		log.Printf("warning: create data dir %s failed (%v); using legacy %s", dir, err, legacyPath)
+		return legacyPath
+	}
+	if err := os.Rename(legacyPath, newPath); err != nil {
+		log.Printf("warning: migrate db %s → %s failed (%v); using legacy path", legacyPath, newPath, err)
+		return legacyPath
+	}
+	for _, ext := range []string{"-wal", "-shm"} {
+		if _, err := os.Stat(legacyPath + ext); err == nil {
+			if err := os.Rename(legacyPath+ext, newPath+ext); err != nil {
+				log.Printf("warning: migrate sidecar %s failed: %v", legacyPath+ext, err)
+			}
+		}
+	}
+	log.Printf("migrated gamesom.db: %s → %s", legacyPath, newPath)
+	return newPath
 }
