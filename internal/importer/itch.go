@@ -42,9 +42,36 @@ type itchGame struct {
 	URL   string
 }
 
-type itchDownloadKey struct {
-	GameID int64
-	Game   itchGame
+// itchOwnedGames returns each distinct owned game from butler's download
+// keys. A game can hold several keys (direct purchase + bundle grant), so
+// DISTINCT collapses them — all selected columns join from the single games
+// row per game_id, making duplicate key rows column-identical.
+func itchOwnedGames(butlerDB *sql.DB) ([]itchGame, error) {
+	rows, err := butlerDB.Query(`
+		SELECT DISTINCT dk.game_id, g.title, g.url
+		FROM download_keys dk
+		JOIN games g ON g.id = dk.game_id
+		WHERE g.classification = 'game'`)
+	if err != nil {
+		return nil, fmt.Errorf("query itch download keys: %w", err)
+	}
+	defer rows.Close()
+
+	var games []itchGame
+	for rows.Next() {
+		var game itchGame
+		var title, url sql.NullString
+		if err := rows.Scan(&game.ID, &title, &url); err != nil {
+			return nil, fmt.Errorf("scan itch download key: %w", err)
+		}
+		game.Title = title.String
+		game.URL = url.String
+		games = append(games, game)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read itch download keys: %w", err)
+	}
+	return games, nil
 }
 
 // itchCavePaths maps game_id → resolved install path for every cave in
@@ -123,31 +150,10 @@ func Itch(database *sql.DB) error {
 	}
 	defer butlerDB.Close()
 
-	downloadRows, err := butlerDB.Query(`
-		SELECT dk.game_id, g.title, g.url
-		FROM download_keys dk
-		JOIN games g ON g.id = dk.game_id
-		WHERE g.classification = 'game'`)
+	games, err := itchOwnedGames(butlerDB)
 	if err != nil {
-		return fmt.Errorf("query itch download keys: %w", err)
+		return err
 	}
-
-	var downloadKeys []itchDownloadKey
-	for downloadRows.Next() {
-		var key itchDownloadKey
-		var title, url sql.NullString
-		if err := downloadRows.Scan(&key.GameID, &title, &url); err != nil {
-			downloadRows.Close()
-			return fmt.Errorf("scan itch download key: %w", err)
-		}
-		key.Game = itchGame{ID: key.GameID, Title: title.String, URL: url.String}
-		downloadKeys = append(downloadKeys, key)
-	}
-	if err := downloadRows.Err(); err != nil {
-		downloadRows.Close()
-		return fmt.Errorf("read itch download keys: %w", err)
-	}
-	downloadRows.Close()
 
 	caves, err := itchCavePaths(butlerDB, configDir)
 	if err != nil {
@@ -156,8 +162,7 @@ func Itch(database *sql.DB) error {
 
 	imported := 0
 	installedCount := 0
-	for _, key := range downloadKeys {
-		game := key.Game
+	for _, game := range games {
 		if game.Title == "" {
 			continue
 		}
@@ -176,7 +181,7 @@ func Itch(database *sql.DB) error {
 
 		installed := 0
 		installPath := ""
-		if p, ok := caves[key.GameID]; ok {
+		if p, ok := caves[game.ID]; ok {
 			if _, err := os.Stat(p); err == nil {
 				installed = 1
 				installPath = p
@@ -186,7 +191,7 @@ func Itch(database *sql.DB) error {
 		entry := db.LibraryEntry{
 			GameID:       gameID,
 			Source:       "itchio",
-			SourceGameID: strconv.FormatInt(key.GameID, 10),
+			SourceGameID: strconv.FormatInt(game.ID, 10),
 			SourceTitle:  game.Title,
 			Owned:        1,
 			Installed:    installed,
