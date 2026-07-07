@@ -378,6 +378,10 @@ func dataDir() (string, error) {
 	}
 }
 
+// DataDir exposes the platform data directory for siblings that store
+// operational files (e.g. the mcp --debug-env dump) beside the DB.
+func DataDir() (string, error) { return dataDir() }
+
 // legacyDataDir is the pre-A096 data location on every OS: XDG semantics
 // hardcoded, so Windows/macOS DBs landed under ~/.local/share/gamesom.
 func legacyDataDir() (string, error) {
