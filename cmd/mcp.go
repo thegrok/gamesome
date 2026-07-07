@@ -575,6 +575,18 @@ func registerPrompts(s *mcp.Server) {
 			}},
 		}, nil
 	})
+
+	s.AddPrompt(&mcp.Prompt{
+		Name:        "game",
+		Description: "Would you like to play a game?",
+	}, func(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		return &mcp.GetPromptResult{
+			Messages: []*mcp.PromptMessage{{
+				Role:    "assistant",
+				Content: &mcp.TextContent{Text: "Would you like to play a game?"},
+			}},
+		}, nil
+	})
 }
 
 func registerResources(s *mcp.Server, database *sql.DB) {
