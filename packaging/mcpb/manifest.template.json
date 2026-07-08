@@ -1,0 +1,62 @@
+{
+  "manifest_version": "0.3",
+  "name": "gamesom",
+  "display_name": "Game Sommelier",
+  "version": "__VERSION__",
+  "description": "Your game library's sommelier: mood- and context-fit picks from the games you already own. Ask Claude: \"what should I play tonight?\"",
+  "long_description": "gamesom imports your library from Steam, GOG, Epic, and itch.io, keeps track of what's actually installed, and briefs Claude as your personal game sommelier — helping you choose from your real backlog based on tonight's energy, mood, and time, instead of recommending universally 'good' games you'll never start.\n\nAfter installing, just ask Claude: \"what should I play tonight?\" The sommelier will offer to import your library on first run.\n\nTroubleshooting: if tool calls stop responding, toggle the extension off and on in Settings → Extensions.",
+  "author": {
+    "name": "Victor Ho",
+    "url": "https://github.com/thegrok"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thegrok/gamesom"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "server/__BIN__",
+    "mcp_config": {
+      "command": "${__dirname}/server/__BIN__",
+      "args": ["mcp"],
+      "env": {
+        "STEAM_API_KEY": "${user_config.steam_api_key}",
+        "STEAM_ID": "${user_config.steam_id}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "list_games", "description": "List games from the library with optional filters (installed-only, source, profile presence)." },
+    { "name": "search_games", "description": "Search games by title (case-insensitive substring)." },
+    { "name": "get_game", "description": "Get a game with all library entries and its sommelier profile." },
+    { "name": "upsert_profile", "description": "Persist sommelier judgments (energy, friction, session fit) for a game." },
+    { "name": "mark_completed", "description": "Mark a game completed or clear its completion timestamp." },
+    { "name": "refresh_library", "description": "Re-import the library from detected (or specified) launchers." }
+  ],
+  "prompts": [
+    {
+      "name": "sommelier",
+      "description": "Brief Claude as your Computer Game Sommelier for this session.",
+      "text": "You are my Computer Game Sommelier, connected to my game library database.\n\nYour job is not to recommend universally good games.\nYour job is to help me choose from my actual backlog based on tonight's constraints.\n\nThe database is the source of truth for what I own and what's installed.\nYou only judge fit to the moment — never invent ownership or installed state.\n\nAsk only the minimum needed. Recommend conversationally, not as a formatted report.\nPrefer reducing guilt over maximizing productivity.\nDo not push the fantasy-self game unless I explicitly ask for that kind of commitment.\n\nWhen you infer sommelier traits about a game (energy required, narrative load, session fit),\nwrite them back to the sommelier_profile table so they persist for next time.\n\nBefore recommending, check the gamesom://library/summary resource. If it's empty\nor looks stale, offer to run refresh_library before making a recommendation."
+    }
+  ],
+  "keywords": ["games", "backlog", "recommendations", "sommelier", "steam", "gog", "epic", "itch"],
+  "user_config": {
+    "steam_api_key": {
+      "type": "string",
+      "title": "Steam Web API Key (optional)",
+      "description": "Adds your full Steam ownership, not just installed games. Get one at https://steamcommunity.com/dev/apikey — or leave empty to import installed Steam games only.",
+      "sensitive": true,
+      "required": false
+    },
+    "steam_id": {
+      "type": "string",
+      "title": "SteamID64 (optional)",
+      "description": "Your 64-bit Steam ID, needed only together with the API key.",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["__PLATFORM__"]
+  }
+}
