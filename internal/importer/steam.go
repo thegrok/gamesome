@@ -143,12 +143,31 @@ func isSteamTool(name string) bool {
 	return false
 }
 
+// programFilesX86 returns the 32-bit Program Files directory. It prefers
+// PROGRAMFILES(X86) directly — some launch contexts (confirmed: the Claude
+// Desktop MCP subprocess, A102) don't pass that variable through at all, so
+// falling back to deriving it from PROGRAMFILES is required for Steam
+// installed-state accuracy there. On every 64-bit Windows install,
+// %ProgramFiles(x86)% is %ProgramFiles% with " (x86)" appended — same drive,
+// guaranteed by WOW64 — so this never invents a wrong path, only a
+// nonexistent one on genuine 32-bit Windows (where the manifest glob below
+// simply finds nothing, same as any other absent candidate directory).
+func programFilesX86() string {
+	if pf86 := os.Getenv("PROGRAMFILES(X86)"); pf86 != "" {
+		return pf86
+	}
+	if pf := os.Getenv("PROGRAMFILES"); pf != "" {
+		return pf + " (x86)"
+	}
+	return ""
+}
+
 func steamAppsDirectories() []string {
 	home, _ := os.UserHomeDir()
 	switch runtime.GOOS {
 	case "windows":
 		var dirs []string
-		if pf86 := os.Getenv("PROGRAMFILES(X86)"); pf86 != "" {
+		if pf86 := programFilesX86(); pf86 != "" {
 			dirs = append(dirs, filepath.Join(pf86, "Steam", "steamapps"))
 		}
 		if pf := os.Getenv("PROGRAMFILES"); pf != "" {
