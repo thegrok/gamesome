@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -397,6 +398,30 @@ func registerTools(s *mcp.Server, database *sql.DB) {
 	})
 
 	s.AddTool(&mcp.Tool{
+		Name: "set_steam_credentials",
+		Description: "Store the user's Steam Web API key and SteamID64 in the local gamesom database so " +
+			"refresh_library can import their full owned Steam library, not just installed games. " +
+			"Env vars STEAM_API_KEY/STEAM_ID take precedence when set. The key is stored in plain text " +
+			"locally and can be regenerated at steamcommunity.com/dev/apikey.",
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"required": ["api_key", "steam_id"],
+			"properties": {
+				"api_key": {"type": "string", "description": "Steam Web API key — 32 hex characters, from https://steamcommunity.com/dev/apikey."},
+				"steam_id": {"type": "string", "description": "SteamID64 — the 17-digit number identifying the account (steamcommunity.com/profiles/<SteamID64>)."}
+			}
+		}`),
+	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := argMap(req)
+		message, err := setSteamCredentials(database,
+			getString(args, "api_key", ""), getString(args, "steam_id", ""))
+		if err != nil {
+			return nil, err
+		}
+		return textResult(message), nil
+	})
+
+	s.AddTool(&mcp.Tool{
 		Name: "refresh_library",
 		Description: "Refresh the library by running import for detected (or specified) launchers. " +
 			"The importer remains the sole source of truth for ownership/installed state — this tool " +
@@ -457,6 +482,36 @@ func registerTools(s *mcp.Server, database *sql.DB) {
 			"results": results,
 		})
 	})
+}
+
+var (
+	steamAPIKeyPattern = regexp.MustCompile(`^[0-9A-Fa-f]{32}$`)
+	steamID64Pattern   = regexp.MustCompile(`^[0-9]{17}$`)
+)
+
+// setSteamCredentials validates and stores the Steam Web API credentials in
+// the meta table. Returns the user-facing confirmation text. Validation exists
+// to catch mispastes in the agent-guided flow, not as a security boundary.
+func setSteamCredentials(database *sql.DB, apiKey, steamID string) (string, error) {
+	apiKey = strings.TrimSpace(apiKey)
+	steamID = strings.TrimSpace(steamID)
+	if !steamAPIKeyPattern.MatchString(apiKey) {
+		return "", fmt.Errorf("that doesn't look like a Steam Web API key (expected 32 hex characters) — it's shown at https://steamcommunity.com/dev/apikey after registering")
+	}
+	if !steamID64Pattern.MatchString(steamID) {
+		return "", fmt.Errorf("that doesn't look like a SteamID64 (expected a 17-digit number) — if the profile URL contains /profiles/<number>, that number is it; a custom URL name won't work")
+	}
+	if err := db.SetMeta(database, db.MetaSteamAPIKey, apiKey); err != nil {
+		return "", fmt.Errorf("store api key: %w", err)
+	}
+	if err := db.SetMeta(database, db.MetaSteamID, steamID); err != nil {
+		return "", fmt.Errorf("store steam id: %w", err)
+	}
+	message := "Steam credentials stored. Run refresh_library with sources [\"steam\"] to import the full owned library."
+	if os.Getenv("STEAM_API_KEY") != "" || os.Getenv("STEAM_ID") != "" {
+		message += " Note: STEAM_API_KEY/STEAM_ID are set in this server's environment and take precedence over the stored values at import time."
+	}
+	return message, nil
 }
 
 // refreshSourceResult is one launcher's outcome from a refresh_library call.
@@ -561,7 +616,21 @@ When you infer sommelier traits about a game (energy required, narrative load, s
 write them back to the sommelier_profile table so they persist for next time.
 
 Before recommending, check the gamesom://library/summary resource. If it's empty
-or looks stale, offer to run refresh_library before making a recommendation.`
+or looks stale, offer to run refresh_library before making a recommendation.
+
+Steam coverage: by default the import sees only *installed* Steam games (local
+manifest scan) — the full owned backlog needs a Steam Web API key. If the user
+wonders where the rest of their Steam library is, or wants full coverage, offer
+to set it up right here in the conversation:
+1. Get the key at https://steamcommunity.com/dev/apikey (requires a
+   non-limited Steam account — one that has spent at least $5 USD on Steam;
+   the "domain" field can be anything, e.g. "localhost").
+2. The SteamID64 is the 17-digit number in their profile URL
+   (steamcommunity.com/profiles/<number>). If they use a custom profile URL,
+   it's shown in the Steam client under Account details, below their username.
+3. Store both with set_steam_credentials, then run refresh_library for steam.
+When offering, mention: the key is stored in plain text in the local gamesom
+database, and can be revoked/regenerated at the same URL any time.`
 
 func registerPrompts(s *mcp.Server) {
 	s.AddPrompt(&mcp.Prompt{
