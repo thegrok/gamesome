@@ -29,10 +29,24 @@ type steamAPIResponse struct {
 	} `json:"response"`
 }
 
+// steamCredentials resolves the Steam Web API credentials: env vars first
+// (the CLI path), then the db meta table (stored in-conversation via the
+// set_steam_credentials MCP tool). Fallback is per-value.
+func steamCredentials(database *sql.DB) (apiKey, steamID string) {
+	apiKey = os.Getenv("STEAM_API_KEY")
+	if apiKey == "" {
+		apiKey = db.GetMeta(database, db.MetaSteamAPIKey)
+	}
+	steamID = os.Getenv("STEAM_ID")
+	if steamID == "" {
+		steamID = db.GetMeta(database, db.MetaSteamID)
+	}
+	return apiKey, steamID
+}
+
 // Steam imports games from Steam via Web API (if keys present) then local manifests.
 func Steam(database *sql.DB) error {
-	apiKey := os.Getenv("STEAM_API_KEY")
-	steamID := os.Getenv("STEAM_ID")
+	apiKey, steamID := steamCredentials(database)
 
 	apiImported := 0
 	var apiErr error
@@ -43,7 +57,7 @@ func Steam(database *sql.DB) error {
 			log.Printf("warning: Steam API import failed: %v", apiErr)
 		}
 	} else {
-		fmt.Println("Steam API skipped (no STEAM_API_KEY/STEAM_ID)")
+		fmt.Println("Steam API skipped (no credentials — use the set_steam_credentials tool, or STEAM_API_KEY/STEAM_ID env vars)")
 	}
 
 	manifestImported, manifestInstalled := steamManifestScan(database)
@@ -52,7 +66,7 @@ func Steam(database *sql.DB) error {
 		fmt.Printf("Imported %d games from Steam (%d from API, %d installed from local manifests)\n",
 			apiImported+manifestImported, apiImported, manifestInstalled)
 	} else {
-		fmt.Printf("Steam API skipped (no STEAM_API_KEY/STEAM_ID); found %d installed via local manifests\n",
+		fmt.Printf("Steam API skipped (no credentials — use the set_steam_credentials tool, or STEAM_API_KEY/STEAM_ID env vars); found %d installed via local manifests\n",
 			manifestInstalled)
 	}
 	return nil

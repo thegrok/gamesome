@@ -62,6 +62,14 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 `
 
+// Meta keys for the Steam Web API credentials stored in-conversation via the
+// set_steam_credentials MCP tool. Env vars STEAM_API_KEY/STEAM_ID take
+// precedence over these at import time.
+const (
+	MetaSteamAPIKey = "steam_api_key"
+	MetaSteamID     = "steam_id"
+)
+
 // Open returns a ready-to-use DB at the default data location, creating the data
 // directory and schema if needed.
 func Open() (*sql.DB, error) {
