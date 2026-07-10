@@ -80,4 +80,6 @@ Single commit's worth of change; no migration, no schema, no CLI surface.
 **Out:** any change to briefing content beyond the egg paragraph and the
 prompt-description tweak; any new prompt/tool/resource; packaging changes
 (the MCPB bundle picks up the new binary through the existing pipeline);
-docs outside `docs/specs/persona-instructions/`.
+docs outside `docs/specs/persona-instructions/` and
+`docs/agent-logs/persona-instructions/` (the lifecycle's work-log + review
+artifacts land in the latter).

@@ -1,0 +1,3 @@
+- **Low**: [docs/agent-logs/persona-instructions/claude.md](/home/claude/repos/gamesom/docs/agent-logs/persona-instructions/claude.md:1) is an untracked file outside the spec’s allowed docs boundary. The implementation spec says scope is limited to `cmd/mcp.go` plus docs under `docs/specs/persona-instructions/`, and explicitly excludes docs outside that path. If this file is intended to be committed, it is scope creep.
+
+No other findings in the committed diff plus `cmd/mcp.go` working-tree diff.
