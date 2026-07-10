@@ -47,6 +47,16 @@ keeping a dead branch.
   on this Linux sandbox — logic-reviewed only, flagged in the PR body as a
   manual-pass item for Victor's next Windows run.
 
+## Codex cross-model review
+
+Ran (read-only, `docs/agent-logs/rename-gamesome/codex-review.md`). Verdict:
+no findings against the spec's load-bearing contract or scope boundary.
+Codex separately noticed a pre-existing, unrelated issue while investigating
+(a 15MB built binary checked into git at repo root, predating this branch)
+and correctly judged it out of scope for this diff — noted as an addendum
+in the review file and flagged to Victor in the PR report rather than fixed
+here.
+
 ## Left alone (out of scope, noted in design.md)
 
 - `.mcp.json` at repo root — stale dev config referencing a nonexistent
