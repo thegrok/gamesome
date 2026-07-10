@@ -1,4 +1,4 @@
-module github.com/thegrok/gamesom
+module github.com/thegrok/gamesome
 
 go 1.26.2
 

@@ -45,7 +45,7 @@ func findLegendaryWithFreshPath(freshPath bool) (string, error) {
 func promptInstallLegendary() error {
 	switch runtime.GOOS {
 	case "linux":
-		return fmt.Errorf("legendary not found on Linux; use 'gamesom import heroic' instead")
+		return fmt.Errorf("legendary not found on Linux; use 'gamesome import heroic' instead")
 	case "darwin":
 		// Don't auto-install on macOS — the Python toolchain is too fragile.
 		// Print a one-liner and let Epic() fall back to EGL manifests.

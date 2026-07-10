@@ -23,9 +23,9 @@ func TestResolveDBPath_MigratesLegacy(t *testing.T) {
 	writeFile(t, filepath.Join(legacyDir, "gamesom.db"), "db")
 	writeFile(t, filepath.Join(legacyDir, "gamesom.db-wal"), "wal")
 
-	got := resolveDBPath(dir, legacyDir)
+	got := resolveDBPath(dir, []string{legacyDir})
 
-	want := filepath.Join(dir, "gamesom.db")
+	want := filepath.Join(dir, "gamesome.db")
 	if got != want {
 		t.Fatalf("resolveDBPath = %q, want %q", got, want)
 	}
@@ -44,12 +44,12 @@ func TestResolveDBPath_NewAlreadyExists(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "new")
 	legacyDir := filepath.Join(root, "legacy")
-	writeFile(t, filepath.Join(dir, "gamesom.db"), "current")
+	writeFile(t, filepath.Join(dir, "gamesome.db"), "current")
 	writeFile(t, filepath.Join(legacyDir, "gamesom.db"), "stale")
 
-	got := resolveDBPath(dir, legacyDir)
+	got := resolveDBPath(dir, []string{legacyDir})
 
-	want := filepath.Join(dir, "gamesom.db")
+	want := filepath.Join(dir, "gamesome.db")
 	if got != want {
 		t.Fatalf("resolveDBPath = %q, want %q", got, want)
 	}
@@ -68,9 +68,9 @@ func TestResolveDBPath_NothingToMigrate(t *testing.T) {
 	dir := filepath.Join(root, "new")
 	legacyDir := filepath.Join(root, "legacy")
 
-	got := resolveDBPath(dir, legacyDir)
+	got := resolveDBPath(dir, []string{legacyDir})
 
-	want := filepath.Join(dir, "gamesom.db")
+	want := filepath.Join(dir, "gamesome.db")
 	if got != want {
 		t.Fatalf("resolveDBPath = %q, want %q", got, want)
 	}
@@ -79,19 +79,41 @@ func TestResolveDBPath_NothingToMigrate(t *testing.T) {
 	}
 }
 
-func TestResolveDBPath_SamePath(t *testing.T) {
+func TestResolveDBPath_MigratesInPlace(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "gamesom.db"), "db")
 
-	got := resolveDBPath(dir, dir)
+	got := resolveDBPath(dir, []string{dir})
 
-	want := filepath.Join(dir, "gamesom.db")
+	want := filepath.Join(dir, "gamesome.db")
 	if got != want {
 		t.Fatalf("resolveDBPath = %q, want %q", got, want)
 	}
 	content, err := os.ReadFile(want)
 	if err != nil || string(content) != "db" {
-		t.Errorf("db must be untouched when dir == legacyDir (content %q, err %v)", content, err)
+		t.Errorf("db must be migrated in place when dir == legacyDir (content %q, err %v)", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gamesom.db")); !os.IsNotExist(err) {
+		t.Errorf("legacy db still present after in-place migration (stat err: %v)", err)
+	}
+}
+
+func TestResolveDBPath_ChecksLegacyDirsInOrder(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "new")
+	newerLegacy := filepath.Join(root, "legacy-newer")
+	olderLegacy := filepath.Join(root, "legacy-older")
+	writeFile(t, filepath.Join(olderLegacy, "gamesom.db"), "oldest")
+
+	got := resolveDBPath(dir, []string{newerLegacy, olderLegacy})
+
+	want := filepath.Join(dir, "gamesome.db")
+	if got != want {
+		t.Fatalf("resolveDBPath = %q, want %q", got, want)
+	}
+	content, err := os.ReadFile(want)
+	if err != nil || string(content) != "oldest" {
+		t.Errorf("should fall through to the second legacy dir when the first has nothing (content %q, err %v)", content, err)
 	}
 }
 
@@ -102,7 +124,7 @@ func TestDataDir_XDGOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dataDir: %v", err)
 	}
-	want := filepath.Join("/", "custom", "share", "gamesom")
+	want := filepath.Join("/", "custom", "share", "gamesome")
 	if got != want {
 		t.Errorf("dataDir with XDG_DATA_HOME = %q, want %q", got, want)
 	}

@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thegrok/gamesom/internal/db"
+	"github.com/thegrok/gamesome/internal/db"
 )
 
 var statusCmd = &cobra.Command{
@@ -53,7 +53,7 @@ var statusCmd = &cobra.Command{
 			breakdown = " (" + breakdown + ")"
 		}
 
-		fmt.Printf("gamesom library: %d games%s\n", totalGames, breakdown)
+		fmt.Printf("gamesome library: %d games%s\n", totalGames, breakdown)
 		fmt.Printf("Installed: %d games\n", installed)
 
 		lastHeroic := db.GetMeta(database, "last_import_heroic")
