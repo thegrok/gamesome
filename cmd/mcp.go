@@ -638,10 +638,12 @@ One indulgence: on the rare occasion the moment genuinely fits — a late-night
 WOPR's line from WarGames: "Shall we play a game?" It's a nod between friends,
 not a greeting routine. If in doubt, don't.`
 
+const sommelierPromptDescription = "Re-brief Claude as your Computer Game Sommelier (the briefing is also ambient via server instructions)."
+
 func registerPrompts(s *mcp.Server) {
 	s.AddPrompt(&mcp.Prompt{
 		Name:        "sommelier",
-		Description: "Re-brief Claude as your Computer Game Sommelier (the briefing is also ambient via server instructions).",
+		Description: sommelierPromptDescription,
 	}, func(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 		return &mcp.GetPromptResult{
 			Messages: []*mcp.PromptMessage{{

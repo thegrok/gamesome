@@ -47,3 +47,37 @@ alongside this log). One **Low** finding, no code findings:
   `docs/agent-logs/<slug>/`. Fixed the scope line in both the repo and
   vault copies of `implementation.md` rather than dropping the file. No
   code change; verification gate unchanged (still green).
+
+## 2026-07-11 — human-verify failure + fix (manifest prompt mirror)
+
+rc4 manual step (c) failed in Claude Desktop: invoking `sommelier` returned
+*"content validation failed. Rejecting response to prevent potential prompt
+injection."*
+
+**Diagnosis**: Claude Desktop validates `prompts/get` responses against the
+prompt `text` declared in the MCPB manifest at install time — the manifest
+is what the user reviewed, so runtime content that differs is rejected as
+potential injection. The A117 code change updated `cmd/mcp.go` only; the
+manifest `prompts` block still carried the pre-egg briefing, the old
+description, and the deleted `game` prompt (which also explains a phantom
+`game` entry in the prompt menu, i.e. manual step (b) would fail too).
+An earlier finding hypothesis (user-role instruction-shaped text) was
+wrong — the same text passes fine once the mirror matches.
+
+**Fix** (this branch):
+
+- `packaging/mcpb/manifest.template.json` — sommelier `text` now includes
+  the egg paragraph (byte-identical to `sommelierBriefing`), description
+  updated to the re-brief wording, `game` prompt entry removed.
+- `cmd/mcp.go` — prompt description extracted to
+  `sommelierPromptDescription` const so the test can compare it.
+- `cmd/mcp_manifest_sync_test.go` — new `TestManifestPromptsMirrorServer`
+  pins the mirror invariant (prompt set, text, description); drift now
+  fails `go test`.
+- Spec scope amended (`implementation.md`): manifest `prompts` block is in
+  scope and load-bearing, no-fork contract extended to it.
+
+**Verification**: `go build` / `go vet` / `go test ./...` green including
+the new test. Manual re-verify needed: rebuild bundle, reinstall, re-run
+steps (a)–(c) — (c) is the one this fixes; (b) should now also show the
+`game` prompt gone from the menu.

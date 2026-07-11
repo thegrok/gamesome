@@ -2,7 +2,7 @@
 feature: persona-instructions
 status: approved
 created: 2026-07-10
-last_amended: 2026-07-10
+last_amended: 2026-07-11
 amended_by: agent:programming
 ---
 
@@ -76,10 +76,38 @@ Single commit's worth of change; no migration, no schema, no CLI surface.
 
 ## Scope boundary
 
-**In:** the three `cmd/mcp.go` edits above.
+**In:** the three `cmd/mcp.go` edits above; the MCPB manifest `prompts`
+block (see amendment below).
 **Out:** any change to briefing content beyond the egg paragraph and the
 prompt-description tweak; any new prompt/tool/resource; packaging changes
-(the MCPB bundle picks up the new binary through the existing pipeline);
+other than the manifest `prompts` block;
 docs outside `docs/specs/persona-instructions/` and
 `docs/agent-logs/persona-instructions/` (the lifecycle's work-log + review
 artifacts land in the latter).
+
+## Amendment 2026-07-11 — manifest prompts block is load-bearing (human-verify failure)
+
+rc4 human-verify failed step (c): Claude Desktop rejected the `sommelier`
+prompt with *"content validation failed. Rejecting response to prevent
+potential prompt injection."* Root cause: Claude Desktop validates a
+prompt's runtime content (`prompts/get`) against the `text` declared in the
+MCPB manifest at install time; the original scope line excluded packaging,
+so `packaging/mcpb/manifest.template.json` kept the pre-A117 briefing (no
+egg paragraph), the old description, and the deleted `game` prompt — every
+mismatch a rejection (and a phantom `game` menu entry).
+
+Amended contract, extending the no-fork rule:
+
+- The manifest `prompts` block **mirrors the server byte-for-byte**: prompt
+  set = exactly what `registerPrompts` registers; `text` ==
+  `sommelierBriefing`; `description` == `sommelierPromptDescription` (const
+  extracted so both surfaces share it).
+- Enforced mechanically by `cmd/mcp_manifest_sync_test.go`
+  (`TestManifestPromptsMirrorServer`) — drift now fails `go test`.
+- Manifest changes applied: sommelier `text` gains the egg paragraph,
+  `description` updated to the re-brief wording, `game` prompt entry
+  deleted.
+
+Vault finding: `game-sommelier/findings/006-persona-instructions-human-verify.md`
+(root-cause hypothesis there — user-role instruction shape — was wrong;
+corrected by addendum).
