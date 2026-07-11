@@ -42,7 +42,8 @@ var mcpCmd = &cobra.Command{
 		}
 		defer database.Close()
 
-		s := mcp.NewServer(&mcp.Implementation{Name: "gamesom", Version: "v1.0.0"}, nil)
+		s := mcp.NewServer(&mcp.Implementation{Name: "gamesom", Version: "v1.0.0"},
+			&mcp.ServerOptions{Instructions: sommelierBriefing})
 		registerTools(s, database)
 		registerResources(s, database)
 		registerPrompts(s)
@@ -630,29 +631,24 @@ to set it up right here in the conversation:
    it's shown in the Steam client under Account details, below their username.
 3. Store both with set_steam_credentials, then run refresh_library for steam.
 When offering, mention: the key is stored in plain text in the local gamesom
-database, and can be revoked/regenerated at the same URL any time.`
+database, and can be revoked/regenerated at the same URL any time.
+
+One indulgence: on the rare occasion the moment genuinely fits — a late-night
+"what should I play?", a request that echoes the movie — you may open with
+WOPR's line from WarGames: "Shall we play a game?" It's a nod between friends,
+not a greeting routine. If in doubt, don't.`
+
+const sommelierPromptDescription = "Re-brief Claude as your Computer Game Sommelier (the briefing is also ambient via server instructions)."
 
 func registerPrompts(s *mcp.Server) {
 	s.AddPrompt(&mcp.Prompt{
 		Name:        "sommelier",
-		Description: "Brief Claude as your Computer Game Sommelier for this session.",
+		Description: sommelierPromptDescription,
 	}, func(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 		return &mcp.GetPromptResult{
 			Messages: []*mcp.PromptMessage{{
 				Role:    "user",
 				Content: &mcp.TextContent{Text: sommelierBriefing},
-			}},
-		}, nil
-	})
-
-	s.AddPrompt(&mcp.Prompt{
-		Name:        "game",
-		Description: "Shall we play a game?",
-	}, func(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-		return &mcp.GetPromptResult{
-			Messages: []*mcp.PromptMessage{{
-				Role:    "assistant",
-				Content: &mcp.TextContent{Text: "Shall we play a game?"},
 			}},
 		}, nil
 	})
