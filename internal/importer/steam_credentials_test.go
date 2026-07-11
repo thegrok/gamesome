@@ -5,12 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/thegrok/gamesom/internal/db"
+	"github.com/thegrok/gamesome/internal/db"
 )
 
 func credentialsTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	database, err := db.OpenAt(filepath.Join(t.TempDir(), "gamesom.db"))
+	database, err := db.OpenAt(filepath.Join(t.TempDir(), "gamesome.db"))
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}

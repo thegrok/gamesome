@@ -53,14 +53,14 @@ func TestWriteLaunchEnvDump(t *testing.T) {
 	if err != nil {
 		t.Fatalf("writeLaunchEnvDump: %v", err)
 	}
-	if filepath.Dir(path) != filepath.Join(os.Getenv("XDG_DATA_HOME"), "gamesom") {
-		t.Errorf("dump written to %q, want under XDG_DATA_HOME/gamesom", path)
+	if filepath.Dir(path) != filepath.Join(os.Getenv("XDG_DATA_HOME"), "gamesome") {
+		t.Errorf("dump written to %q, want under XDG_DATA_HOME/gamesome", path)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read dump: %v", err)
 	}
-	if !strings.Contains(string(content), "gamesom mcp launch-environment dump") {
+	if !strings.Contains(string(content), "gamesome mcp launch-environment dump") {
 		t.Errorf("dump file missing header:\n%s", content)
 	}
 }

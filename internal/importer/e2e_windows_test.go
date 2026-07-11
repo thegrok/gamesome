@@ -1,7 +1,7 @@
 //go:build windows && e2e
 
 // Package importer e2e tests run against the REAL launcher installs on a Windows
-// box (gamesom's primary platform). They are gated behind both the `windows` and
+// box (gamesome's primary platform). They are gated behind both the `windows` and
 // `e2e` build tags, so they never run under the default `go test ./...`; invoke
 // them explicitly with:
 //
@@ -30,12 +30,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/thegrok/gamesom/internal/db"
-	"github.com/thegrok/gamesom/internal/normalize"
+	"github.com/thegrok/gamesome/internal/db"
+	"github.com/thegrok/gamesome/internal/normalize"
 )
 
 // newTestDB opens a throwaway DB in a temp dir so a test run never touches the
-// user's real gamesom.db.
+// user's real gamesome.db.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	database, err := db.OpenAt(filepath.Join(t.TempDir(), "e2e.db"))

@@ -11,8 +11,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/thegrok/gamesom/internal/db"
-	"github.com/thegrok/gamesom/internal/normalize"
+	"github.com/thegrok/gamesome/internal/db"
+	"github.com/thegrok/gamesome/internal/normalize"
 )
 
 type epicManifest struct {
@@ -39,7 +39,7 @@ func epicManifestsDir() (string, error) {
 		}
 		return filepath.Join(home, "Library", "Application Support", "Epic", "EpicGamesLauncher", "Data", "Manifests"), nil
 	default:
-		return "", fmt.Errorf("epic import not supported on %s; use gamesom import heroic", runtime.GOOS)
+		return "", fmt.Errorf("epic import not supported on %s; use gamesome import heroic", runtime.GOOS)
 	}
 }
 

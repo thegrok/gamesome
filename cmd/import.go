@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/thegrok/gamesom/internal/db"
-	"github.com/thegrok/gamesom/internal/importer"
+	"github.com/thegrok/gamesome/internal/db"
+	"github.com/thegrok/gamesome/internal/importer"
 )
 
 var importCmd = &cobra.Command{

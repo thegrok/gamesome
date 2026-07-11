@@ -18,8 +18,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
-	"github.com/thegrok/gamesom/internal/db"
-	"github.com/thegrok/gamesom/internal/importer"
+	"github.com/thegrok/gamesome/internal/db"
+	"github.com/thegrok/gamesome/internal/importer"
 )
 
 var debugEnv bool
@@ -42,7 +42,7 @@ var mcpCmd = &cobra.Command{
 		}
 		defer database.Close()
 
-		s := mcp.NewServer(&mcp.Implementation{Name: "gamesom", Version: "v1.0.0"},
+		s := mcp.NewServer(&mcp.Implementation{Name: "gamesome", Version: "v1.0.0"},
 			&mcp.ServerOptions{Instructions: sommelierBriefing})
 		registerTools(s, database)
 		registerResources(s, database)
@@ -58,7 +58,7 @@ func init() {
 }
 
 // writeLaunchEnvDump writes the launch context to a timestamped file in the
-// gamesom data dir and returns its path. File per launch: the diagnosis is
+// gamesome data dir and returns its path. File per launch: the diagnosis is
 // a diff between a Claude-Desktop launch and a terminal launch, so the two
 // dumps must not overwrite each other. Never writes to stdout — that's the
 // JSON-RPC stream.
@@ -104,7 +104,7 @@ func renderLaunchEnv(w io.Writer) error {
 	}
 
 	lines := []string{
-		"gamesom mcp launch-environment dump (A102 diagnostic)",
+		"gamesome mcp launch-environment dump (A102 diagnostic)",
 		"WARNING: may contain secrets — delete after diagnosis",
 		"",
 		"time: " + time.Now().Format(time.RFC3339),
@@ -400,7 +400,7 @@ func registerTools(s *mcp.Server, database *sql.DB) {
 
 	s.AddTool(&mcp.Tool{
 		Name: "set_steam_credentials",
-		Description: "Store the user's Steam Web API key and SteamID64 in the local gamesom database so " +
+		Description: "Store the user's Steam Web API key and SteamID64 in the local gamesome database so " +
 			"refresh_library can import their full owned Steam library, not just installed games. " +
 			"Env vars STEAM_API_KEY/STEAM_ID take precedence when set. The key is stored in plain text " +
 			"locally and can be regenerated at steamcommunity.com/dev/apikey.",
@@ -616,7 +616,7 @@ Do not push the fantasy-self game unless I explicitly ask for that kind of commi
 When you infer sommelier traits about a game (energy required, narrative load, session fit),
 write them back to the sommelier_profile table so they persist for next time.
 
-Before recommending, check the gamesom://library/summary resource. If it's empty
+Before recommending, check the gamesome://library/summary resource. If it's empty
 or looks stale, offer to run refresh_library before making a recommendation.
 
 Steam coverage: by default the import sees only *installed* Steam games (local
@@ -630,7 +630,7 @@ to set it up right here in the conversation:
    (steamcommunity.com/profiles/<number>). If they use a custom profile URL,
    it's shown in the Steam client under Account details, below their username.
 3. Store both with set_steam_credentials, then run refresh_library for steam.
-When offering, mention: the key is stored in plain text in the local gamesom
+When offering, mention: the key is stored in plain text in the local gamesome
 database, and can be revoked/regenerated at the same URL any time.
 
 One indulgence: on the rare occasion the moment genuinely fits — a late-night
@@ -655,7 +655,7 @@ func registerPrompts(s *mcp.Server) {
 }
 
 func registerResources(s *mcp.Server, database *sql.DB) {
-	const uri = "gamesom://library/summary"
+	const uri = "gamesome://library/summary"
 	s.AddResource(&mcp.Resource{URI: uri, Name: "Library Summary", MIMEType: "text/plain"},
 		func(ctx context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
 			var total, installed, withProfile int

@@ -1,8 +1,8 @@
 #!/bin/sh
 # build-mcpb.sh <binary-path> <goos> <goarch> <version>
 #
-# Packages one built gamesom binary as an MCP Bundle (.mcpb): a zip whose
-# root holds manifest.json plus server/gamesom(.exe). Run by GoReleaser as a
+# Packages one built gamesome binary as an MCP Bundle (.mcpb): a zip whose
+# root holds manifest.json plus server/gamesome(.exe). Run by GoReleaser as a
 # per-build post hook; also runnable by hand against any binary.
 set -eu
 
@@ -14,15 +14,15 @@ VERSION="$4"
 case "$GOOS" in
 windows)
 	PLATFORM=win32
-	BINNAME=gamesom.exe
+	BINNAME=gamesome.exe
 	;;
 darwin)
 	PLATFORM=darwin
-	BINNAME=gamesom
+	BINNAME=gamesome
 	;;
 linux)
 	PLATFORM=linux
-	BINNAME=gamesom
+	BINNAME=gamesome
 	;;
 *)
 	echo "build-mcpb: unsupported GOOS $GOOS" >&2
@@ -32,7 +32,7 @@ esac
 
 STAGE="dist/mcpb-stage/${GOOS}_${GOARCH}"
 OUT_DIR="dist/mcpb"
-OUT="$OUT_DIR/gamesom_${VERSION}_${GOOS}_${GOARCH}.mcpb"
+OUT="$OUT_DIR/gamesome_${VERSION}_${GOOS}_${GOARCH}.mcpb"
 
 rm -rf "$STAGE"
 mkdir -p "$STAGE/server" "$OUT_DIR"

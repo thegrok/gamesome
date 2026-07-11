@@ -8,7 +8,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "gamesom",
+	Use:   "gamesome",
 	Short: "Computer Game Sommelier — pick what to play tonight",
 }
 

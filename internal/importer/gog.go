@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/thegrok/gamesom/internal/db"
-	"github.com/thegrok/gamesom/internal/normalize"
+	"github.com/thegrok/gamesome/internal/db"
+	"github.com/thegrok/gamesome/internal/normalize"
 )
 
 func gogGalaxyDBPath() (string, error) {
@@ -29,7 +29,7 @@ func gogGalaxyDBPath() (string, error) {
 		}
 		return filepath.Join(home, "Library", "Application Support", "GOG.com", "Galaxy", "storage", "galaxy-2.0.db"), nil
 	default:
-		return "", fmt.Errorf("gog galaxy import not supported on %s; use gamesom import gog", runtime.GOOS)
+		return "", fmt.Errorf("gog galaxy import not supported on %s; use gamesome import gog", runtime.GOOS)
 	}
 }
 

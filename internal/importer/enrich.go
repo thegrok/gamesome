@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thegrok/gamesom/internal/db"
-	"github.com/thegrok/gamesom/internal/normalize"
+	"github.com/thegrok/gamesome/internal/db"
+	"github.com/thegrok/gamesome/internal/normalize"
 )
 
 type steamSearchResponse struct {
