@@ -8,6 +8,11 @@
 *.so
 *.dylib
 
+# Locally-built gamesome binary (extensionless on Linux/macOS, so the
+# rules above miss it — 308806a accidentally committed one; A120)
+/gamesom
+/gamesome
+
 # Test binary, built with `go test -c`
 *.test
 
