@@ -108,17 +108,21 @@ func assertLibraryInvariants(t *testing.T, database *sql.DB, source string) {
 	// human can see in the launcher; unset, zero installed on a non-empty
 	// import is a loud failure (the A100/A102 class of bug).
 	expectEnv := "E2E_EXPECT_INSTALLED_" + strings.ToUpper(source)
+	declared := "undeclared"
 	if v := os.Getenv(expectEnv); v != "" {
 		want, err := strconv.Atoi(v)
 		if err != nil {
 			t.Fatalf("[%s] %s=%q is not an integer", source, expectEnv, v)
 		}
+		declared = "declared=" + v
 		if installedCount != want {
 			t.Errorf("[%s] installed count = %d, but %s declares %d", source, installedCount, expectEnv, want)
 		}
 	} else if count > 0 && installedCount == 0 {
 		t.Errorf("[%s] non-empty import (%d rows) reports 0 installed — an under-reporting importer is indistinguishable from an empty machine; if genuinely nothing is installed for this source, declare it: set %s=0", source, count, expectEnv)
 	}
+
+	t.Logf("[%s] rows=%d installed=%d %s=%s", source, count, installedCount, expectEnv, declared)
 
 	// No duplicate (source, source_game_id). The DB UNIQUE constraint should make
 	// this impossible; asserting it documents the invariant and guards a future
