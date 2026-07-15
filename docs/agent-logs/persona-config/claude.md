@@ -48,6 +48,13 @@ Configurable + adaptive sommelier persona, per `docs/specs/persona-config/`.
     `(pinned)` marker correct) and suppresses onboarding — confirming the
     "takes effect next launch" timing model.
 
+## Codex cross-model review
+
+Skipped — Codex quota exhausted ("You've hit your usage limit … try again at
+Aug 3rd, 2026"). Best-effort/non-blocking per the /feature Stage 6 policy; no
+subscription checkpoint applies. Verification was fully Claude-run (build/vet/test
++ end-to-end smoke test above).
+
 ## Residual / not in scope
 
 - **`SQLITE_BUSY` under *concurrent* writes**: firing two `update_persona` calls
