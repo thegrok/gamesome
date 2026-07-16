@@ -19,10 +19,10 @@ func personaTestDB(t *testing.T) *sql.DB {
 	return database
 }
 
-func TestComposeInstructions_BaselineOffersOnboarding(t *testing.T) {
+func TestComposePersona_BaselineOffersOnboarding(t *testing.T) {
 	database := personaTestDB(t)
 
-	got := composeInstructions(database)
+	got := composePersona(database)
 
 	if !strings.HasPrefix(got, sommelierBriefing) {
 		t.Error("composed instructions must start with the baseline briefing")
@@ -38,7 +38,7 @@ func TestComposeInstructions_BaselineOffersOnboarding(t *testing.T) {
 	}
 }
 
-func TestComposeInstructions_ConfiguredRendersDeltasNoOnboarding(t *testing.T) {
+func TestComposePersona_ConfiguredRendersDeltasNoOnboarding(t *testing.T) {
 	database := personaTestDB(t)
 	if err := db.UpsertPersona(database, "productivity_stance", "reduce guilt", boolPtrCmd(true)); err != nil {
 		t.Fatalf("seed pinned dim: %v", err)
@@ -47,7 +47,7 @@ func TestComposeInstructions_ConfiguredRendersDeltasNoOnboarding(t *testing.T) {
 		t.Fatalf("seed adaptive dim: %v", err)
 	}
 
-	got := composeInstructions(database)
+	got := composePersona(database)
 
 	if !strings.Contains(got, "--- Your configured persona ---") {
 		t.Error("configured persona should render its section")
@@ -69,20 +69,56 @@ func TestComposeInstructions_ConfiguredRendersDeltasNoOnboarding(t *testing.T) {
 	}
 }
 
-func TestComposeInstructions_ResetSuppressesOnboarding(t *testing.T) {
+func TestComposePersona_ResetSuppressesOnboarding(t *testing.T) {
 	database := personaTestDB(t)
 	// User declined setup: reset with no dimension marks configured but leaves persona empty.
 	if _, err := db.ResetPersona(database, ""); err != nil {
 		t.Fatalf("reset: %v", err)
 	}
 
-	got := composeInstructions(database)
+	got := composePersona(database)
 
 	if strings.Contains(got, personaOnboarding) {
 		t.Error("after a decline/reset the onboarding offer must not reappear")
 	}
 	if strings.Contains(got, "--- Your configured persona ---") {
 		t.Error("empty persona should not render a configured-persona section")
+	}
+}
+
+// The persona is only useful if it reaches the model. Claude Desktop discards
+// ServerOptions.Instructions (finding 007), so tool descriptions are the delivery
+// channel — this pins that the persona actually rides list_games' description, and
+// that a configured persona reaches it. Without this, the persona can be perfectly
+// composed and still be delivered nowhere: exactly the A117/A099 failure.
+func TestListGamesDescription_CarriesPersona(t *testing.T) {
+	database := personaTestDB(t)
+
+	got := listGamesDescription(database)
+
+	if !strings.HasPrefix(got, listGamesBaseDescription) {
+		t.Error("the tool description must still describe the tool first")
+	}
+	if !strings.Contains(got, sommelierBriefing) {
+		t.Error("list_games description must carry the baseline briefing — it is the only channel Desktop honours")
+	}
+	if !strings.Contains(got, personaProtocol) {
+		t.Error("list_games description must carry the adaptation protocol")
+	}
+	if !strings.Contains(got, personaOnboarding) {
+		t.Error("unconfigured persona should carry the onboarding offer into the tool description")
+	}
+
+	// A configured persona must reach the same channel.
+	if err := db.UpsertPersona(database, "productivity_stance", "reduce guilt", boolPtrCmd(true)); err != nil {
+		t.Fatalf("seed dim: %v", err)
+	}
+	got = listGamesDescription(database)
+	if !strings.Contains(got, "- productivity_stance (pinned): reduce guilt") {
+		t.Error("configured persona dimensions must reach the tool description")
+	}
+	if strings.Contains(got, personaOnboarding) {
+		t.Error("a configured persona should not re-offer onboarding via the tool description")
 	}
 }
 

@@ -38,6 +38,22 @@ personal default as the baseline everyone gets by default.
 
 ## Decisions
 
+> **CORRECTION 2026-07-16 — Decision 1 below is WRONG. See `findings/007`.**
+> Claude Desktop **does not honour `ServerOptions.Instructions`** — verified against
+> rc6 in a live session: the model reports receiving *"no separate briefing beyond
+> tool descriptions"*, offers no persona, and A099's onboarding never fires. So A117's
+> ambient delivery has been **inert since it shipped**, and this decision built on it.
+> The design cited finding 006's *"step (a) was not reported as failing"* as prior art;
+> that line records that step (a) was **never checked**, not that it worked.
+>
+> **As built:** the composed persona now rides **`list_games`' tool description** —
+> the only channel that is ambient, dynamic *and* not manifest-validated (the manifest
+> declares a short description; Desktop delivers the long runtime one without
+> complaint). `ServerOptions.Instructions` is still populated — it costs nothing and is
+> the spec-correct channel if a client ever honours it — but nothing depends on it.
+> The rest of this decision (the prompt stays baseline-only; the fork is deliberate)
+> still holds.
+
 ### 1. Delivery — the adaptive persona rides `ServerOptions.Instructions` only
 
 The composed briefing (baseline + persona delta + adaptation protocol) is passed to

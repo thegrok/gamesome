@@ -66,3 +66,34 @@ subscription checkpoint applies. Verification was fully Claude-run (build/vet/te
   follow-up, out of this feature's scope.
 - Ambient delivery in Claude Desktop, the interview UX, and the confirm-gate
   behavior are client-side — human-verify steps (a)–(d) in implementation.md.
+
+## Amendment 2026-07-16 — delivery reworked onto tool descriptions (finding 007)
+
+rc6 human-verify exposed that **Claude Desktop discards `ServerOptions.Instructions`**.
+The model reported *"no separate briefing beyond tool descriptions"*, showed no persona
+stance, and A099's onboarding never fired — while the manually-invoked `sommelier`
+prompt delivered the baseline perfectly. So A117's ambient delivery has been inert
+since it shipped, and this feature's Decision 1 was built on it.
+
+Root cause of the design error: finding 006 said step (a) "was not reported as
+failing" — i.e. never checked — and design.md cited it as established prior art.
+
+**Change:** `composeInstructions` → `composePersona`, now feeding two sinks:
+- `list_games`' tool description (via `listGamesDescription`) — the channel that
+  actually works: ambient, dynamic, and not manifest-validated (proven — the manifest
+  declares a short description and Desktop delivers the long runtime one).
+- `ServerOptions.Instructions` — kept, costs nothing, correct per spec if a client
+  ever honours it. Nothing depends on it.
+
+Not a novel hack: this server's tool descriptions have always carried persona stance
+("Fit-to-the-moment judgment only…"), and that was the only persona ever reaching
+Desktop ambiently. `list_games` anchors it because the persona governs exactly the
+judgment it feeds.
+
+**Verification:** `go build`/`vet`/`test` green; new `TestListGamesDescription_CarriesPersona`
+pins the delivery channel (its absence is what let the original ship undeliverable).
+Wire-level probe of the built binary confirms `tools/list` serves a 3985-char
+`list_games` description carrying baseline + protocol + onboarding + egg.
+Still needs human re-verify in Desktop — acceptance test (finding 007): a fresh chat
+with no prompt invoked should answer "what should I play tonight?" by asking energy /
+session length / mood.

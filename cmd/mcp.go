@@ -42,8 +42,12 @@ var mcpCmd = &cobra.Command{
 		}
 		defer database.Close()
 
+		// Instructions are kept even though Claude Desktop discards them (finding 007):
+		// they cost nothing, they are the *correct* channel per the MCP spec, and any
+		// client that does honour them gets the persona for free. The delivery that
+		// actually works rides list_games' description — see listGamesDescription.
 		s := mcp.NewServer(&mcp.Implementation{Name: "gamesome", Version: "v1.0.0"},
-			&mcp.ServerOptions{Instructions: composeInstructions(database)})
+			&mcp.ServerOptions{Instructions: composePersona(database)})
 		registerTools(s, database)
 		registerResources(s, database)
 		registerPrompts(s)
@@ -182,7 +186,7 @@ func getInt(m map[string]any, key string, def int) int {
 func registerTools(s *mcp.Server, database *sql.DB) {
 	s.AddTool(&mcp.Tool{
 		Name:        "list_games",
-		Description: "List games from the library with optional filters. Fit-to-the-moment judgment only — installed/owned state here is authoritative; never infer ownership beyond what this returns.",
+		Description: listGamesDescription(database),
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -742,13 +746,45 @@ short sessions vs. deep dives), then record each answer with update_persona (pin
 If they'd rather just use your default, call reset_persona with no arguments so you run the
 baseline and don't keep asking.`
 
-// composeInstructions builds the ambient server-instructions string: the baseline
-// briefing, then the configured persona (if any) as overriding deltas, then the
-// adaptation protocol, and the one-time onboarding offer when unconfigured. It is
-// read once, at server construction (instructions are captured at initialize; there
-// is no later setter), so persona changes take effect at the next launch. It must
-// never fail the server: any DB error falls back to the bare baseline.
-func composeInstructions(database *sql.DB) string {
+const listGamesBaseDescription = "List games from the library with optional filters. " +
+	"Fit-to-the-moment judgment only — installed/owned state here is authoritative; " +
+	"never infer ownership beyond what this returns."
+
+// listGamesDescription carries the ambient persona.
+//
+// WHY HERE, of all places (finding 007): Claude Desktop does NOT honour
+// ServerOptions.Instructions — verified empirically, the model reports receiving "no
+// separate briefing beyond tool descriptions". So A117's ambient delivery has been
+// inert since it shipped. Of the three channels, only tool descriptions are all
+// three of: ambient (every description is in the model's context via tools/list),
+// dynamic (served from the running server, so it can be composed from the db), and
+// NOT manifest-validated (unlike prompts/get, which finding 006 proved is frozen —
+// the manifest declares a short description here and Desktop delivers this long one
+// without complaint).
+//
+// This extends an existing pattern rather than inventing one: the server's tool
+// descriptions have always carried persona stance ("Fit-to-the-moment judgment
+// only…", "persist sommelier judgments…"), and that is the ONLY persona that ever
+// reached Desktop ambiently. list_games anchors it because the persona governs
+// exactly the judgment this tool feeds: which of the user's games fits tonight.
+//
+// The brief is delimited and explicitly scoped to the conversation, so it reads as a
+// standing brief rather than as minutiae about one tool's arguments.
+func listGamesDescription(database *sql.DB) string {
+	return listGamesBaseDescription +
+		"\n\n--- Your standing brief as this user's Game Sommelier (applies to the whole conversation, not just this tool) ---\n\n" +
+		composePersona(database)
+}
+
+// composePersona builds the persona string: the baseline briefing, then the
+// configured persona (if any) as overriding deltas, then the adaptation protocol,
+// and the one-time onboarding offer when unconfigured.
+//
+// It is read once, at server construction, so persona changes take effect at the
+// next launch (true for both sinks: instructions are captured at initialize, and
+// tool descriptions are fixed at AddTool). It must never fail the server: any DB
+// error falls back to the bare baseline.
+func composePersona(database *sql.DB) string {
 	rows, err := db.GetPersona(database)
 	if err != nil {
 		return sommelierBriefing
