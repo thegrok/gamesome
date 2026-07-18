@@ -2,11 +2,13 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -60,6 +62,14 @@ CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS persona (
+    dimension  TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    pinned     INTEGER NOT NULL DEFAULT 0,
+    source     TEXT NOT NULL DEFAULT 'adaptive',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `
 
 // Meta keys for the Steam Web API credentials stored in-conversation via the
@@ -69,6 +79,18 @@ const (
 	MetaSteamAPIKey = "steam_api_key"
 	MetaSteamID     = "steam_id"
 )
+
+// MetaPersonaConfigured records that the user has engaged persona setup at all
+// (via update_persona or reset_persona). Once "1", the sommelier stops auto-
+// offering the opt-in interview — the user can still start it on demand. See
+// A099 (game-sommelier/spec/features/persona-config).
+const MetaPersonaConfigured = "persona_configured"
+
+// ErrPersonaPinned is returned by UpsertPersona when an adaptive write (one that
+// carries no explicit pin decision) tries to overwrite a pinned dimension. This
+// is the structural half of A099's drift guardrail: the sommelier's in-band,
+// confirm-gated adaptation physically cannot erase a dimension the user pinned.
+var ErrPersonaPinned = errors.New("dimension is pinned; an explicit pin decision is required to change it")
 
 // Open returns a ready-to-use DB at the default data location, creating the data
 // directory and schema if needed.
@@ -346,6 +368,115 @@ func GetMeta(db *sql.DB, key string) string {
 	var v string
 	db.QueryRow(`SELECT value FROM meta WHERE key = ?`, key).Scan(&v)
 	return v
+}
+
+// PersonaDimension is one configured stance of the sommelier persona: a delta on
+// top of the static baseline briefing. See A099.
+type PersonaDimension struct {
+	Dimension string `json:"dimension"`
+	Value     string `json:"value"`
+	Pinned    bool   `json:"pinned"`
+	Source    string `json:"source"`
+}
+
+// GetPersona returns all configured persona dimensions, ordered by dimension.
+// An empty slice means the user runs the baseline default (no deltas).
+func GetPersona(db *sql.DB) ([]PersonaDimension, error) {
+	rows, err := db.Query(`SELECT dimension, value, pinned, source FROM persona ORDER BY dimension`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PersonaDimension
+	for rows.Next() {
+		var p PersonaDimension
+		var pinned int
+		if err := rows.Scan(&p.Dimension, &p.Value, &pinned, &p.Source); err != nil {
+			return nil, err
+		}
+		p.Pinned = pinned == 1
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// UpsertPersona writes one persona dimension. The pinned argument encodes intent:
+//   - pinned == nil is an adaptive / undirected write. It is REFUSED with
+//     ErrPersonaPinned if the existing row is pinned, and stored with source
+//     "adaptive" otherwise.
+//   - pinned != nil is a deliberate user-directed pin decision (interview or an
+//     explicit change) and may overwrite a pinned row; stored with source "user".
+//
+// Any successful write marks the persona configured, so onboarding stops nagging.
+func UpsertPersona(db *sql.DB, dimension, value string, pinned *bool) error {
+	dimension = strings.TrimSpace(dimension)
+	value = strings.TrimSpace(value)
+	if dimension == "" || value == "" {
+		return errors.New("persona dimension and value are both required")
+	}
+
+	var existingPinned int
+	err := db.QueryRow(`SELECT pinned FROM persona WHERE dimension = ?`, dimension).Scan(&existingPinned)
+	switch {
+	case err == sql.ErrNoRows:
+		// new dimension — no guard applies
+	case err != nil:
+		return err
+	case existingPinned == 1 && pinned == nil:
+		return ErrPersonaPinned
+	}
+
+	newPinned := 0
+	source := "adaptive"
+	if pinned != nil {
+		source = "user"
+		if *pinned {
+			newPinned = 1
+		}
+	} else if existingPinned == 1 {
+		newPinned = 1 // unreachable given the guard above, but keeps the value honest
+	}
+
+	if _, err := db.Exec(`
+		INSERT INTO persona (dimension, value, pinned, source, updated_at)
+		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(dimension) DO UPDATE SET
+			value      = excluded.value,
+			pinned     = excluded.pinned,
+			source     = excluded.source,
+			updated_at = CURRENT_TIMESTAMP`,
+		dimension, value, newPinned, source); err != nil {
+		return err
+	}
+	return SetMeta(db, MetaPersonaConfigured, "1")
+}
+
+// ResetPersona clears the configured persona back to baseline: one dimension when
+// dimension != "", or the whole persona when dimension == "". It marks the persona
+// configured (a deliberate reset / interview decline shouldn't re-trigger the
+// onboarding offer). Returns the number of dimensions cleared.
+func ResetPersona(db *sql.DB, dimension string) (int64, error) {
+	dimension = strings.TrimSpace(dimension)
+	var res sql.Result
+	var err error
+	if dimension == "" {
+		res, err = db.Exec(`DELETE FROM persona`)
+	} else {
+		res, err = db.Exec(`DELETE FROM persona WHERE dimension = ?`, dimension)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if err := SetMeta(db, MetaPersonaConfigured, "1"); err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// PersonaConfigured reports whether the user has engaged persona setup at all.
+func PersonaConfigured(db *sql.DB) bool {
+	return GetMeta(db, MetaPersonaConfigured) == "1"
 }
 
 // LibraryEntry is the data needed for an upsert.

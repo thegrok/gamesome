@@ -28,7 +28,9 @@
     { "name": "upsert_profile", "description": "Persist sommelier judgments (energy, friction, session fit) for a game." },
     { "name": "mark_completed", "description": "Mark a game completed or clear its completion timestamp." },
     { "name": "set_steam_credentials", "description": "Store the user's Steam Web API key + SteamID64 (walked through in-conversation) to unlock full owned-library import." },
-    { "name": "refresh_library", "description": "Re-import the library from detected (or specified) launchers." }
+    { "name": "refresh_library", "description": "Re-import the library from detected (or specified) launchers." },
+    { "name": "update_persona", "description": "Record or update one dimension of the user's sommelier persona (confirm-gated)." },
+    { "name": "reset_persona", "description": "Clear the user's configured persona (one dimension or all) back to the baseline default." }
   ],
   "prompts": [
     {
