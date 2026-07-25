@@ -65,6 +65,17 @@ binary (Linux, or a non-Desktop MCP client), point your client at it:
 }
 ```
 
+### Claude Code CLI
+
+Register it globally, so it's available from any directory:
+
+```sh
+claude mcp add gamesome --scope user -- /path/to/gamesome mcp
+```
+
+Or add the JSON block above to a project's `.mcp.json` for a project-scoped
+install instead.
+
 ## Importing your library
 
 Ask the sommelier to "import my library" — it offers to do this on first run
