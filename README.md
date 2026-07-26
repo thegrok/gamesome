@@ -1,13 +1,15 @@
 # gamesome — Game Sommelier
 
-Your game library's sommelier: mood- and context-fit picks from the games you
-already own. Ask Claude: *"what should I play tonight?"*
+Collected so many games you don't even know what you to play anymore? Gamesome can help.
 
-`gamesome` imports your library from Steam, GOG, Epic, and itch.io into a
-local database, keeps track of what's actually installed, and briefs Claude
-as your personal game sommelier — helping you choose from your real backlog
-based on tonight's energy, mood, and time, instead of recommending
-universally "good" games you'll never start.
+Ask Claude: *"what should I play tonight?"*
+
+<!-- asciinema embed goes here once A080 lands -->
+*(asciinema recording coming — a full import run across all four stores,
+followed by a few `gamesome status` / sommelier conversation examples)*
+
+As your game library's sommelier, Gamesome will mood- and context-fit picks from the games you
+already own. It curates your Steam, GOG, Epic, and itch.io libraries, keeps track of what's actually installed, helping you choose from your real backlog based on energy, mood, and time, instead of just recommending universally "good" games you'll never start.
 
 ## Features
 
@@ -31,9 +33,8 @@ universally "good" games you'll never start.
 | Linux, or any non-Desktop MCP client (Claude Code, etc.) | The `tar.gz`/`zip` binary from [Releases](https://github.com/thegrok/gamesome/releases) — extract and put `gamesome` on your `PATH` (or reference it by full path) |
 | Building from source | See below |
 
-There's no Claude Desktop on Linux, so Linux always takes the `tar.gz` —
-even though a Linux `.mcpb` is also published for completeness, there's no
-Desktop client on that platform to install it into.
+There's currently no officially release Claude Desktop on Linux, so Linux always takes the `tar.gz` —
+even though a Linux `.mcpb` is also published for completeness.
 
 ### Building from source
 
@@ -126,18 +127,12 @@ gamesome status
 ```
 
 shows your library stats. Otherwise, just talk to Claude — "what should I
-play tonight?" — and the sommelier takes it from there, including offering
+play?" — and the sommelier takes it from there, including offering
 to refresh your library if it looks stale.
 
 `gamesome enrich` is optional: it cross-references games to Steam app IDs and
 fetches genre/tag metadata from the Steam Store, which helps the sommelier
 reason about fit. Not required for basic use.
-
-## Demo
-
-<!-- asciinema embed goes here once A080 lands -->
-*(asciinema recording coming — a full import run across all four stores,
-followed by a few `gamesome status` / sommelier conversation examples)*
 
 ## Updating
 
