@@ -16,6 +16,41 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+func TestRecordPlaytimeObservation_AppendsRows(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gamesome.db")
+	database, err := OpenAt(path)
+	if err != nil {
+		t.Fatalf("OpenAt: %v", err)
+	}
+	defer database.Close()
+
+	RecordPlaytimeObservation(database, "steam", "440", 100)
+	RecordPlaytimeObservation(database, "steam", "440", 145)
+
+	rows, err := database.Query(
+		`SELECT playtime_minutes FROM library_observations WHERE source = ? AND source_game_id = ? ORDER BY id`,
+		"steam", "440",
+	)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer rows.Close()
+
+	var got []int
+	for rows.Next() {
+		var minutes int
+		if err := rows.Scan(&minutes); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, minutes)
+	}
+
+	want := []int{100, 145}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("observations = %v, want %v (should append, not upsert)", got, want)
+	}
+}
+
 func TestResolveDBPath_MigratesLegacy(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "new")

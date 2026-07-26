@@ -70,6 +70,19 @@ CREATE TABLE IF NOT EXISTS persona (
     source     TEXT NOT NULL DEFAULT 'adaptive',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Append-only: a row per import observation, never updated or upserted.
+-- Diffing consecutive rows for a (source, source_game_id) yields
+-- minutes-played-in-the-interval, since Steam's playtime_forever is
+-- cumulative (A162, Phase 5a). No FK to library_entries — keyed by the same
+-- (source, source_game_id) pair library_entries' own UNIQUE constraint uses.
+CREATE TABLE IF NOT EXISTS library_observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source TEXT NOT NULL,
+    source_game_id TEXT NOT NULL,
+    observed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    playtime_minutes INTEGER NOT NULL
+);
 `
 
 // Meta keys for the Steam Web API credentials stored in-conversation via the
@@ -343,6 +356,18 @@ func UpsertLibraryEntry(db *sql.DB, e LibraryEntry) error {
 		e.PlaytimeMinutes, e.LastPlayedAt,
 	)
 	return err
+}
+
+// RecordPlaytimeObservation appends a playtime snapshot for later diffing
+// (A162, Phase 5a). Best-effort: an error here must never fail the import
+// that triggered it — this is instrumentation, not import correctness.
+func RecordPlaytimeObservation(db *sql.DB, source, sourceGameID string, playtimeMinutes int) {
+	if _, err := db.Exec(
+		`INSERT INTO library_observations (source, source_game_id, playtime_minutes) VALUES (?, ?, ?)`,
+		source, sourceGameID, playtimeMinutes,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not record playtime observation for %s/%s: %v\n", source, sourceGameID, err)
+	}
 }
 
 // UpdateInstalledBySteamAppID marks a steam entry as installed by appid.
