@@ -129,6 +129,13 @@ func OpenAt(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("migrate schema: %w", err)
 	}
 
+	// The db carries the Steam Web API key in plain text (A126) — restrict it
+	// regardless of umask. Best-effort: a permission error here shouldn't stop
+	// the app from starting.
+	if err := os.Chmod(path, 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not restrict db file permissions: %v\n", err)
+	}
+
 	migrateEnrichColumns(db)
 	return db, nil
 }

@@ -4,10 +4,15 @@ status: approved
 created: 2026-07-25
 author: claude
 type: implementation
-actions: A069
+actions: A069, A126
 ---
 
-# Implementation — gamesome README (A069)
+# Implementation — gamesome README (A069) + Steam key security note (A126)
+
+**2026-07-26 amendment**: A126 folded in (see design.md). Also: Victor did a
+manual editing pass on the README after the initial Claude draft (tagline,
+demo-blurb placement, minor wording) — those edits stand; this doc's content
+plan below reflects the current merged state, not a prescription to revert.
 
 Ground truth pulled from repo head `aa501b8` (2026-07-25): `cmd/root.go`,
 `cmd/import.go`, `cmd/enrich.go`, `cmd/status.go`, `cmd/mcp.go`,
@@ -82,11 +87,8 @@ Single new `README.md` at repo root. No other files change (the stale
      zero-config). Full owned-library coverage is an in-conversation upgrade
      — ask the sommelier, it walks through getting a Web API key
      (steamcommunity.com/dev/apikey) + SteamID64 and calls
-     `set_steam_credentials`. State the disclosure verbatim from the shipped
-     `sommelier` prompt: key stored in plain text in the local gamesome
-     database, revocable/regenerable any time at the same URL. (This is
-     A069-scope documentation of already-shipped copy, not A126's file-mode
-     hardening — don't conflate the two in the text.)
+     `set_steam_credentials`. Links to the `## Security` section (below) for
+     the storage disclosure rather than repeating it inline.
    - **Epic**: Heroic cache → Legendary CLI → EGL manifests fallback chain,
      first success wins (Heroic-first because legendary-gl is a pain on
      macOS).
@@ -117,6 +119,14 @@ Single new `README.md` at repo root. No other files change (the stale
    No fabricated cast/link. This keeps the section slot stable so landing
    A080 is a one-line swap.
 
+8a. **Security (A126, folded in).** Own `## Security` heading: the Steam key
+    is stored in plain text (no OS keychain), low-privilege/revocable at
+    steamcommunity.com/dev/apikey, and the db file itself is created `0600`
+    regardless of OS umask. Code: `internal/db/db.go`'s `OpenAt` calls
+    `os.Chmod(path, 0600)` right after the schema migration succeeds
+    (best-effort — logs a warning on failure, doesn't fail startup). Test:
+    `TestOpenAt_RestrictsFilePermissions` in `db_test.go`, skipped on Windows.
+
 9. **Updating.** `.mcpb`-installed bundles don't auto-update (already-decided
    copy from `.goreleaser.yaml`'s release footer) — download the new bundle
    and install over the old one; if tool calls stop responding, toggle the
@@ -141,13 +151,13 @@ Single new `README.md` at repo root. No other files change (the stale
 
 ## Verification
 
-No build/vet/test surface — README is prose, not code. "Verify" here means:
-read the rendered file back for accuracy against the source files cited
-above, and confirm `go build ./...` still passes untouched (sanity that
-adding a root-level markdown file didn't disturb anything — it won't, but
-cheap to confirm).
+README half: prose, not code — verified by reading it back against the
+source files cited above. `0600`-permission half: real code surface —
+`go build ./...`, `go vet ./...`, `go test ./...` (including the new
+`TestOpenAt_RestrictsFilePermissions`).
 
 ## Scope boundary
 
-In: `README.md` only. Out: `.mcp.json` fix, A080 recording, A126 code change,
-any CLI/MCP behavior change, license file creation.
+In: `README.md`, `internal/db/db.go` (chmod only), `internal/db/db_test.go`
+(permission test). Out: `.mcp.json` fix, A080 recording, OS keychain /
+encryption-at-rest, any other CLI/MCP behavior change, license file creation.

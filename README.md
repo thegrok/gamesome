@@ -98,8 +98,7 @@ will walk you through getting a Web API key from
 [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) and
 your SteamID64, then store them for you via `set_steam_credentials`.
 
-The key is stored in plain text in your local `gamesome` database, and can
-be revoked or regenerated at any time at the same URL.
+See [Security](#security) for how that key is stored.
 
 ### Epic
 
@@ -133,6 +132,16 @@ to refresh your library if it looks stale.
 `gamesome enrich` is optional: it cross-references games to Steam app IDs and
 fetches genre/tag metadata from the Steam Store, which helps the sommelier
 reason about fit. Not required for basic use.
+
+## Security
+
+Your Steam Web API key (if you set one up) is stored in **plain text** in the
+local `gamesome` database — there's no OS keychain integration. It's a
+low-privilege, read-oriented key you can revoke or regenerate at any time at
+[steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey), so
+this is a deliberate, accepted trade-off rather than an oversight. The
+database file itself is created with `0600` permissions (readable/writable
+by you only) regardless of your OS's default umask.
 
 ## Updating
 

@@ -4,10 +4,16 @@ status: approved
 created: 2026-07-25
 author: claude
 type: lite   # content/structure decisions only, no system/UX/schema design
-actions: A069
+actions: A069, A126
 ---
 
-# Design (lite) — gamesome README (A069)
+# Design (lite) — gamesome README (A069) + Steam key security note (A126)
+
+**2026-07-26 scope amendment**: A126 (security note + `0600` db-file
+permission) folded into this same branch/PR — cheap, same territory (the
+Steam-key-storage disclosure), and A126's README half would otherwise
+duplicate what this PR already writes. A126's code half (`0600` on the db
+file) is added here too. See "Out of scope" below for what's still excluded.
 
 ## Problem
 
@@ -50,16 +56,18 @@ developers — the README is their first and primary onboarding surface.
   registered command. Flag the stale `.mcp.json` as a separate finding, not
   silently fixed inline (out of scope for a README-only action) — noted in
   the work-log.
-- **Security note**: A126 (separate action, not yet done) is the formal
-  "security note + `0600` on the db file" action. A069's action text doesn't
-  ask for a security section. But the Steam-key-storage disclosure
-  ("stored in plain text locally, one-click revocable") is **already shipped
-  product copy** — it's in the MCPB manifest's `long_description` and in the
-  `sommelier` prompt text the server sends today. Repeating that exact,
-  already-decided disclosure in the README's Steam import section is
-  documentation accuracy, not new scope — it is not a substitute for A126
-  (which additionally covers the `0600` file-permission code change and
-  stays open).
+- **Security note (A126, folded in)**: promoted from an inline aside in the
+  Steam section to its own `## Security` heading, linked from the Steam
+  section. Content is the already-shipped disclosure language (MCPB manifest
+  `long_description` / `sommelier` prompt: plain text, revocable at
+  steamcommunity.com/dev/apikey) plus the new `0600` file-permission fact.
+- **`0600` db-file permission (A126, folded in)**: `internal/db/db.go`'s
+  `OpenAt` chmods the db file to `0600` right after schema migration
+  (best-effort — a chmod failure logs a warning but doesn't stop startup,
+  since survival beats hardening for a single-user local file). Covered by
+  `TestOpenAt_RestrictsFilePermissions` in `db_test.go` (skipped on Windows —
+  POSIX permission bits don't apply there). OS keychain encryption-at-rest
+  stays explicitly deferred, per A126's original decision (2026-07-14).
 - **Tool list**: enumerate the nine MCP tools straight from `cmd/mcp.go`
   `AddTool` calls + `packaging/mcpb/manifest.template.json`'s `tools` array
   (the two are supposed to stay mirrored — `TestManifestPromptsMirrorServer`
@@ -70,5 +78,6 @@ developers — the README is their first and primary onboarding surface.
 - Fixing the stale root `.mcp.json` (flagged, not fixed — separate from a
   README action).
 - A080's actual asciinema recording/embed.
-- A126's `0600` db-file permission change.
-- Any CLI/MCP behavior change.
+- OS keychain / encryption-at-rest for the Steam key (deferred in A126's
+  original 2026-07-14 decision, not reopened here).
+- Any other CLI/MCP behavior change.
