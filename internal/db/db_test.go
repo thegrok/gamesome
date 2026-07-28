@@ -3,6 +3,7 @@ package db
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -48,6 +49,27 @@ func TestRecordPlaytimeObservation_AppendsRows(t *testing.T) {
 	want := []int{100, 145}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("observations = %v, want %v (should append, not upsert)", got, want)
+	}
+}
+
+func TestOpenAt_RestrictsFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits don't apply on Windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "gamesome.db")
+	database, err := OpenAt(path)
+	if err != nil {
+		t.Fatalf("OpenAt: %v", err)
+	}
+	defer database.Close()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat db file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Errorf("db file permissions = %o, want 0600 (A126)", got)
 	}
 }
 
