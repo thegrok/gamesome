@@ -133,6 +133,7 @@ func steamAPIImport(database *sql.DB, apiKey, steamID string) (int, error) {
 			log.Printf("warning: upsert library entry %q: %v", g.Name, err)
 			continue
 		}
+		db.RecordPlaytimeObservation(database, entry.Source, entry.SourceGameID, entry.PlaytimeMinutes)
 		imported++
 	}
 	return imported, nil
