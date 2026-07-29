@@ -143,6 +143,14 @@ this is a deliberate, accepted trade-off rather than an oversight. The
 database file itself is created with `0600` permissions (readable/writable
 by you only) regardless of your OS's default umask.
 
+The database lives in a platform-idiomatic data directory:
+
+| OS | Path |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\gamesome\gamesome.db` |
+| macOS | `~/Library/Application Support/gamesome/gamesome.db` |
+| Linux | `~/.local/share/gamesome/gamesome.db` (or `$XDG_DATA_HOME/gamesome/gamesome.db` if set) |
+
 ## Updating
 
 `.mcpb` bundles installed from a file don't auto-update — download the new
