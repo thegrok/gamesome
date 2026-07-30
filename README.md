@@ -1,6 +1,6 @@
 # gamesome — Game Sommelier
 
-Collected so many games you don't even know what you to play anymore? Gamesome can help.
+Collected so many games you don't even know what to play anymore? Gamesome can help.
 
 Ask Claude: *"what should I play tonight?"*
 
