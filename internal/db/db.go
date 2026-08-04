@@ -554,7 +554,7 @@ func dataDir() (string, error) {
 }
 
 // DataDir exposes the platform data directory for siblings that store
-// operational files (e.g. the mcp --debug-env dump) beside the DB.
+// operational files beside the DB.
 func DataDir() (string, error) { return dataDir() }
 
 // legacyIdiomaticDataDir returns the A096-era idiomatic-per-OS path, still
