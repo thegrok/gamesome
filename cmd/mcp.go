@@ -7,14 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
-	"os/user"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -22,20 +17,10 @@ import (
 	"github.com/thegrok/gamesome/internal/importer"
 )
 
-var debugEnv bool
-
 var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Run the MCP server (stdio transport)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if debugEnv {
-			if path, err := writeLaunchEnvDump(); err != nil {
-				log.Printf("warning: --debug-env dump failed: %v", err)
-			} else {
-				log.Printf("mcp: launch environment dumped to %s", path)
-			}
-		}
-
 		database, err := db.Open()
 		if err != nil {
 			return fmt.Errorf("open db: %w", err)
@@ -56,76 +41,7 @@ var mcpCmd = &cobra.Command{
 }
 
 func init() {
-	mcpCmd.Flags().BoolVar(&debugEnv, "debug-env", false,
-		"write a launch-environment dump (env, cwd, user) to the data dir at startup — A102 diagnostic")
 	rootCmd.AddCommand(mcpCmd)
-}
-
-// writeLaunchEnvDump writes the launch context to a timestamped file in the
-// gamesome data dir and returns its path. File per launch: the diagnosis is
-// a diff between a Claude-Desktop launch and a terminal launch, so the two
-// dumps must not overwrite each other. Never writes to stdout — that's the
-// JSON-RPC stream.
-func writeLaunchEnvDump() (string, error) {
-	dir, err := db.DataDir()
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", err
-	}
-	path := filepath.Join(dir, fmt.Sprintf("mcp-env-%s-pid%d.log",
-		time.Now().Format("20060102-150405"), os.Getpid()))
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	if err := renderLaunchEnv(f); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
-// renderLaunchEnv writes the launch-context report: header, identity lines,
-// then the environment sorted so two dumps diff cleanly. Identity-line
-// failures (exe/cwd/user) are reported inline rather than returned — a
-// partial dump is diagnostic data, not a failure.
-func renderLaunchEnv(w io.Writer) error {
-	exe, err := os.Executable()
-	if err != nil {
-		exe = fmt.Sprintf("<error: %v>", err)
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = fmt.Sprintf("<error: %v>", err)
-	}
-	username := "<unknown>"
-	if u, err := user.Current(); err != nil {
-		username = fmt.Sprintf("<error: %v>", err)
-	} else {
-		username = u.Username
-	}
-
-	lines := []string{
-		"gamesome mcp launch-environment dump (A102 diagnostic)",
-		"WARNING: may contain secrets — delete after diagnosis",
-		"",
-		"time: " + time.Now().Format(time.RFC3339),
-		fmt.Sprintf("pid: %d", os.Getpid()),
-		"exe: " + exe,
-		fmt.Sprintf("args: %q", os.Args),
-		"cwd: " + cwd,
-		"user: " + username,
-		"",
-		"--- environment (sorted) ---",
-	}
-	env := os.Environ()
-	sort.Strings(env)
-	lines = append(lines, env...)
-
-	_, err = io.WriteString(w, strings.Join(lines, "\n")+"\n")
-	return err
 }
 
 func textResult(text string) *mcp.CallToolResult {
