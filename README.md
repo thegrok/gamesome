@@ -163,3 +163,17 @@ Binary installs: download the new release tarball and replace the old one.
 
 Issues and pull requests welcome at
 [github.com/thegrok/gamesome](https://github.com/thegrok/gamesome).
+
+## License
+
+[GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later).
+
+In practice: run it, study it, change it, share it. If you distribute a modified
+version — or run one as a service other people reach over a network — you have to
+publish your source under the same license. Building a hosted game-recommender on
+these importers is fine; keeping that version closed is not.
+
+Third-party dependencies keep their own licenses, all permissive: the
+[MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk) (MIT/Apache-2.0),
+[cobra](https://github.com/spf13/cobra) (Apache-2.0), and
+[modernc.org/sqlite](https://modernc.org/sqlite) (BSD-3-Clause).
