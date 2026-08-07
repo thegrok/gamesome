@@ -4,24 +4,13 @@ Collected so many games you don't even know what to play anymore? Gamesome can h
 
 Ask Claude: *"what should I play tonight?"*
 
-<!-- DEMO VIDEO — one step left, do it in this order:
+<!-- Bare URL on its own line — GitHub turns that into a player. Any markdown
+wrapper, []() or ![](), downgrades it to a link. Asset uploaded via issue #41
+(closing that issue does not remove it). The same file is committed at
+docs/media/gamesome-demo.mp4 so it lives in version control too, but a relative
+path to it will NOT render a player. -->
 
-  1. This repo must already be PUBLIC. Attachment assets inherit repo
-     visibility, so one uploaded while the repo is private will 404 for
-     everyone but you.
-  2. Open a new issue in this repo, drag docs/media/gamesome-demo.mp4 into
-     the comment box, and wait for the upload to finish. Copy the
-     https://github.com/user-attachments/assets/... URL it produces. You can
-     close the issue afterwards; the asset survives.
-  3. Replace this whole comment block with that URL, alone on its own line.
-     No markdown wrapper — not []() and not ![](). A bare URL on its own
-     line is what GitHub turns into a player; anything else renders a link.
-  4. Verify in a logged-out browser or a private window before merging.
-
-The file is committed at docs/media/gamesome-demo.mp4 so the asset lives in
-version control too — the attachment CDN is outside anything we control. A
-relative path to it will NOT render a player, which is why the URL above is
-still needed. -->
+https://github.com/user-attachments/assets/8cf9ade0-7829-45bd-8241-d92591920379
 
 
 As your game library's sommelier, Gamesome will mood- and context-fit picks from the games you
