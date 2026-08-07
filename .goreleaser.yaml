@@ -48,6 +48,23 @@ release:
   prerelease: auto
   extra_files:
     - glob: dist/mcpb/*.mcpb
+  # Sits above the generated changelog, so the notes open with what the release
+  # is rather than with a wall of commit subjects.
+  header: |
+    gamesome imports your Steam, GOG, Epic and itch.io libraries and briefs
+    Claude as a sommelier for your own backlog — what to play tonight given
+    your energy, your mood, and the time you actually have. It recommends only
+    from games you already own.
+
+    **What "alpha" means here.** The sommelier's judgments about individual
+    games accumulate as you use it, so early recommendations lean on titles and
+    genre metadata rather than on much taste history — it gets better the more
+    you talk to it. The Steam import covers *installed* games with no setup;
+    ask in conversation to connect your full owned library. Expect the local
+    database schema to move between alpha releases.
+
+    Install instructions are at the bottom of this page.
+
   footer: |
     ## One-click install (Claude Desktop)
 
