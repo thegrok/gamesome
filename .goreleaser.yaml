@@ -42,6 +42,10 @@ checksum:
   algorithm: sha256
 
 release:
+  # Derive the GitHub pre-release flag from the tag: anything with a suffix
+  # (-alpha.N, -rc.N) publishes as a pre-release, plain vX.Y.Z as a full one.
+  # Without this the alpha would take the "Latest" badge and /releases/latest.
+  prerelease: auto
   extra_files:
     - glob: dist/mcpb/*.mcpb
   footer: |
