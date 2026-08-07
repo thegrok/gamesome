@@ -4,9 +4,14 @@ Collected so many games you don't even know what to play anymore? Gamesome can h
 
 Ask Claude: *"what should I play tonight?"*
 
-<!-- asciinema embed goes here once A080 lands -->
-*(asciinema recording coming — a full import run across all four stores,
-followed by a few `gamesome status` / sommelier conversation examples)*
+<!-- Bare URL on its own line — GitHub turns that into a player. Any markdown
+wrapper, []() or ![](), downgrades it to a link. Asset uploaded via issue #41
+(closing that issue does not remove it). The same file is committed at
+docs/media/gamesome-demo.mp4 so it lives in version control too, but a relative
+path to it will NOT render a player. -->
+
+https://github.com/user-attachments/assets/8cf9ade0-7829-45bd-8241-d92591920379
+
 
 As your game library's sommelier, Gamesome will mood- and context-fit picks from the games you
 already own. It curates your Steam, GOG, Epic, and itch.io libraries, keeps track of what's actually installed, helping you choose from your real backlog based on energy, mood, and time, instead of just recommending universally "good" games you'll never start.
