@@ -1,6 +1,6 @@
 # gamesome — Game Sommelier
 
-Collected so many games you don't even know what to play anymore? Gamesome can help.
+Collected so many games you don't even know what to play anymore? Gamesome can help!
 
 Ask Claude: *"what should I play tonight?"*
 
@@ -166,8 +166,15 @@ Binary installs: download the new release tarball and replace the old one.
 
 ## Contributing
 
-Issues and pull requests welcome at
-[github.com/thegrok/gamesome](https://github.com/thegrok/gamesome).
+Bug reports and questions are welcome as
+[issues](https://github.com/thegrok/gamesome/issues) — useful to me even when I
+can't act on them quickly.
+
+Pull requests are a different matter. This is a solo side project and I don't
+have review capacity to promise, so an unsolicited PR may sit a long time or be
+declined for reasons that have nothing to do with its quality. If there's
+something you want changed, open an issue first. If you'd rather not wait: it's
+AGPL, so fork it.
 
 ## License
 
