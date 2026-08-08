@@ -65,7 +65,19 @@ release:
 
     Install instructions are at the bottom of this page.
 
+    <details>
+    <summary>Full changelog</summary>
+
+  # NOTE: the <details> block opened at the end of `header` is closed at the top
+  # of `footer`, wrapping the generated changelog between them — GoReleaser
+  # composes the notes as header + changelog + footer and has no option of its
+  # own for collapsing. The two tags are split across these keys, so editing one
+  # without the other orphans the block. The blank line after <summary> is also
+  # load-bearing: without it GitHub won't render the markdown list inside.
   footer: |
+
+    </details>
+
     ## One-click install (Claude Desktop)
 
     Download the `.mcpb` bundle for your platform above, then double-click it
@@ -77,9 +89,21 @@ release:
     responding, toggle the extension off and on in Settings → Extensions.
 
 changelog:
-  sort: asc
+  # No `sort:` — asc/desc sort alphabetically by commit subject, not by date.
+  # That is what turned the v1.0.0-alpha.1 notes into a jumble: "Initial commit"
+  # landed mid-list and all 44 merge commits piled up together. Omitting the key
+  # keeps git's own chronological order.
+
+  # Short SHA rather than the default 40 characters.
+  format: "{{ slice .SHA 0 7 }} {{ .Message }}"
   filters:
     exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
+      # Merge commits and spec commits are the bulk of the noise: 44 and 21
+      # respectively out of 144 at alpha.1. The trailing-colon patterns that
+      # were here before assumed conventional-commit subjects, which this
+      # history mostly doesn't use — they matched 6 commits in total.
+      - "^Merge "
+      - "^[Ss]pec:"
+      - "^docs"
+      - "^test"
+      - "^chore"
