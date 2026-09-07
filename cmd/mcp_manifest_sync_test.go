@@ -12,7 +12,7 @@ import (
 // rejected as potential prompt injection. So the manifest's prompt block is
 // not documentation — it must mirror what registerPrompts serves, byte for
 // byte. This test pins that invariant (drift shipped in v0.0.2-rc4 broke the
-// sommelier re-brief; see docs/agent-logs/persona-instructions/).
+// sommelier re-brief; see .mind-harness/agent-logs/persona-instructions/).
 func TestManifestPromptsMirrorServer(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "packaging", "mcpb", "manifest.template.json"))
 	if err != nil {
