@@ -5,8 +5,8 @@ is the documentation** — start there if you want to install or use gamesome.
 
 | Directory | What's in it |
 |---|---|
-| `specs/` | Per-feature design and implementation notes, written *before* the code |
-| `agent-logs/` | Per-feature work logs, written *after* — what was built, what was decided, how it was verified |
+| `../.mind-harness/specs/` | Per-feature design and implementation notes, written *before* the code |
+| `../.mind-harness/agent-logs/` | Per-feature work logs, written *after* — what was built, what was decided, how it was verified |
 
 ## How to read them
 
